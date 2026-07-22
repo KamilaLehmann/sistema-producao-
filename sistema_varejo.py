@@ -33,16 +33,15 @@ EQUIPE = {
 }
 NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
 
-# 2. Barra Lateral de Controle
+# 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
-# Filtro de Exibição para Líder e Apoio
-st.sidebar.markdown("### 👁️ Filtro de Exibição (E-mail e Tabela)")
-exibir_kamila = st.sidebar.checkbox("Exibir Kamila Moraes (Líder)", value=True)
-exibir_alisson = st.sidebar.checkbox("Exibir Alisson Lima (Apoio)", value=True)
+# MELHORIA: Filtros unificados por caixas de seleção inteligente (multiselect)
+st.sidebar.markdown("### 👁️ Filtros Gerenciais")
+remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela e E-mail):", NOMES_LISTA)
+ocultar_saidas = st.sidebar.multiselect("Ocultar Saídas (Deixar atividade normal):", NOMES_LISTA)
 
-# CORREÇÃO: Barrinha única para escolher quem faltou no dia
 st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
 
@@ -50,18 +49,29 @@ st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 
 for cargo, integrantes in EQUIPE.items():
-    st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
+    # Verifica se há algum integrante visível antes de criar o título do cargo
+    integrantes_visiveis = [i for i in integrantes if i not in remover_do_setor]
+    if integrantes_visiveis:
+        st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
+        
     for op in integrantes:
+        if op in remover_do_setor:
+            continue  # Esconde completamente a pessoa se estiver no filtro de remoção
+            
         is_ausente = op in faltas_selecionadas
+        is_saida_oculta = op in ocultar_saidas
+        
         label_op = f"👤 {op} (AUSENTE)" if is_ausente else f"**👤 {op}**"
         st.sidebar.markdown(label_op, unsafe_allow_html=True)
         
         # Primeira Saída
         st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
         c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
-        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
-        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente else ("07h30" if op == "Rosana Delfino" and not is_ausente else ""))
-        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
+        
+        # Puxa o valor inicial apenas se o funcionário estiver ativo e não tiver saídas ocultadas
+        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente and not is_saida_oculta else ""
+        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente and not is_saida_oculta else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente and not is_saida_oculta else ("07h30" if op == "Rosana Delfino" and not is_ausente and not is_saida_oculta else ""))
+        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente and not is_saida_oculta else ""
         
         with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
         with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
@@ -118,11 +128,11 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento dos indicadores individuais por cargo estruturado
+    # Processamento dos indicadores individuais
     data_gerencial = []
     for n in NOMES_LISTA:
-        if n == "Kamila Moraes" and not exibir_kamila: continue
-        if n == "Alisson Lima" and not exibir_alisson: continue
+        if n in remover_do_setor:
+            continue  # Filtra para não aparecer na tabela gerencial
             
         mov = dict_movimentacao[n]
         is_ausente = n in faltas_selecionadas
@@ -180,14 +190,3 @@ Segue abaixo o relatório analítico de produção do setor de Varejo, acompanha
 
 **1. Resumo de Produção Geral (Performance Diária)**
 • **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
-• **SKUs Movimentados:** {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})
-
-**2. Indicadores de Desempenho Coletivo e Histórico por Função**
-{blocos_email}
-*Nota: Os remanejamentos de colaboradores ocorreram devido à falta de pedidos no estoque no início da manhã.*
-
-Atenciosamente,
-    """
-    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=320)
-else:
-    st.info("👋 Campo de seleção de ausências unificado. Faça o upload da sua planilha Excel na barra lateral.")
