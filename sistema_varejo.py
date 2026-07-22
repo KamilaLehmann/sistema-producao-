@@ -52,7 +52,7 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Cruzamento de Dados Segura
+# 3. Lógica de Cruzamento de Dados Alinhada com Resumos do Excel
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     
@@ -70,11 +70,11 @@ if uploaded_file:
             break
             
     if not col_operadora:
-        col_operadora = df.columns[0]
+        col_operadora = df.columns
 
     # Identificação de colunas de SKUs e Quantidades
-    col_sku = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-    col_qtd = df.columns[-1] if len(df.columns) > 2 else df.columns[0]
+    col_sku = df.columns if len(df.columns) > 1 else df.columns
+    col_qtd = df.columns[-1] if len(df.columns) > 2 else df.columns
     
     for col in df.columns:
         if "SKU" in str(col).upper() or "COD" in str(col).upper():
@@ -86,7 +86,7 @@ if uploaded_file:
     total_exemplares = 0
     total_skus = 0
 
-    # Processamento linha por linha de forma isolada e imune a falhas em Arrow Scalars
+    # Processamento refinado capturando as linhas que contêm resumos escritos
     for n in NOMES_OFICIAIS:
         valores_op_str = df[col_operadora].fillna("").astype(str).str.upper()
         df_func = df[valores_op_str.str.contains(n.upper(), regex=False)]
@@ -96,14 +96,16 @@ if uploaded_file:
         
         if not df_func.empty:
             try:
-                # Se na linha aparece o resumo de contagem ou tabelas do tipo dinâmicas
                 valores_sku_str = df_func[col_sku].fillna("").astype(str).str.upper()
+                
+                # Se na planilha do usuário as palavras de resumo estão na coluna de SKUs
                 if valores_sku_str.str.contains("CONTAGEM", regex=False).any():
-                    linha_contagem = df_func[valores_sku_str.str.contains("CONTAGEM", regex=False)]
-                    qtd_skus = int(pd.to_numeric(linha_contagem[col_qtd], errors='coerce').sum())
+                    linha_c = df_func[valores_sku_str.str.contains("CONTAGEM", regex=False)]
+                    qtd_skus = int(pd.to_numeric(linha_c[col_qtd], errors='coerce').sum())
                 else:
                     qtd_skus = int(df_func[col_sku].nunique())
-                    
+                
+                # Captura a soma das quantidades numéricas reais
                 qtd_exemplares = int(pd.to_numeric(df_func[col_qtd], errors='coerce').sum())
             except:
                 pass
@@ -120,7 +122,7 @@ if uploaded_file:
 
     df_real = pd.DataFrame(data_base)
     
-    # Validação e recalibragem caso os tipos numéricos falhem na leitura da planilha
+    # Se o cruzamento der zero devido à formatação de texto das colunas, ativa recalibragem segura
     if total_exemplares == 0:
         total_exemplares = len(df)
         total_skus = df[col_sku].nunique()
@@ -178,5 +180,11 @@ if uploaded_file:
     with col_tab:
         st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial</h3>", unsafe_allow_html=True)
         st.dataframe(df_real, use_container_width=True, hide_index=True)
+
+    # 4. Área de Validação Cruzada (Exibição da Planilha Crua)
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    st.subheader("🔍 Visualização Crua do Arquivo Excel")
+    st.write("Veja abaixo as primeiras linhas detectadas pelo sistema para conferir os nomes das colunas:")
+    st.dataframe(df.head(20), use_container_width=True)
 else:
     st.info("👋 Painel operacional pronto para uso. Faça o upload da planilha Excel para ativar os indicadores automáticos.")
