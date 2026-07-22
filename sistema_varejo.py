@@ -42,11 +42,9 @@ st.sidebar.markdown("### 👁️ Filtro de Exibição (E-mail e Tabela)")
 exibir_kamila = st.sidebar.checkbox("Exibir Kamila Moraes (Líder)", value=True)
 exibir_alisson = st.sidebar.checkbox("Exibir Alisson Lima (Apoio)", value=True)
 
-# NOVO: Seção de Ausências e Faltas na Barra Lateral
-st.sidebar.markdown("### ❌ Ausências do Dia (Marque se faltou)")
-dict_faltas = {}
-for op in NOMES_LISTA:
-    dict_faltas[op] = st.sidebar.checkbox(f"Falta: {op}", value=False, key=f"falta_{op}")
+# CORREÇÃO: Barrinha única para escolher quem faltou no dia
+st.sidebar.markdown("### ❌ Ausências do Dia")
+faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
@@ -54,16 +52,16 @@ dict_movimentacao = {}
 for cargo, integrantes in EQUIPE.items():
     st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
     for op in integrantes:
-        # Se a pessoa faltou, desabilita visualmente ou avisa na barra lateral
-        label_op = f"👤 {op} (AUSENTE)" if dict_faltas[op] else f"**👤 {op}**"
+        is_ausente = op in faltas_selecionadas
+        label_op = f"👤 {op} (AUSENTE)" if is_ausente else f"**👤 {op}**"
         st.sidebar.markdown(label_op, unsafe_allow_html=True)
         
         # Primeira Saída
         st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
         c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
-        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not dict_faltas[op] else ""
-        init_ret1 = "10h00" if op == "Gabriele" and not dict_faltas[op] else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not dict_faltas[op] else ("07h30" if op == "Rosana Delfino" and not dict_faltas[op] else ""))
-        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not dict_faltas[op] else ""
+        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
+        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente else ("07h30" if op == "Rosana Delfino" and not is_ausente else ""))
+        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
         
         with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
         with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
@@ -110,7 +108,6 @@ if uploaded_file:
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards com Fontes Menores Otimizadas
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
@@ -128,9 +125,9 @@ if uploaded_file:
         if n == "Alisson Lima" and not exibir_alisson: continue
             
         mov = dict_movimentacao[n]
+        is_ausente = n in faltas_selecionadas
         
-        # Se estiver marcado como falta, zera e altera a justificativa
-        if dict_faltas[n]:
+        if is_ausente:
             qtd_exemplares = 0
             qtd_skus = 0
             justificativa_texto = "Ausente. Justificativa: Falta administrativa."
@@ -162,7 +159,7 @@ if uploaded_file:
     st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
-    # 4. Caixa de Texto Gerada do E-mail Organizada por Hierarquia Filtrada
+    # 4. Caixa de Texto Gerada do E-mail
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
     
@@ -191,3 +188,6 @@ Segue abaixo o relatório analítico de produção do setor de Varejo, acompanha
 
 Atenciosamente,
     """
+    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=320)
+else:
+    st.info("👋 Campo de seleção de ausências unificado. Faça o upload da sua planilha Excel na barra lateral.")
