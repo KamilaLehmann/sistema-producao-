@@ -158,7 +158,7 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento individual (Aba de Produção por Pessoa)
+    # Processamento individual puxando os dados reais da coluna I e M
     data_gerencial = []
     for n in nomes_do_dia:
         if n in remover_do_setor:
