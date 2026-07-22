@@ -58,15 +58,15 @@ for cargo, integrantes in EQUIPE.items():
             continue
             
         is_ausente = op in faltas_selecionadas
-        label_op = f"GS_AUSD" if is_ausente else f"**👤 {op}**"
         
+        # CÓDIGO DA ABA DE AUSÊNCIA DINÂMICA
         if is_ausente:
             st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
-            # Cria um campo de texto individual para o motivo da falta daquela operadora específica
+            # Esta linha abaixo cria a aba de texto embaixo do nome de quem faltou
             dict_motivos_falta[op] = st.sidebar.text_input(f"Motivo da falta de {op}:", value="Falta administrativa", key=f"mot_falta_{op}")
             dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
         else:
-            st.sidebar.markdown(label_op, unsafe_allow_html=True)
+            st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
             # Primeira Saída
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
             c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
