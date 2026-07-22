@@ -32,14 +32,14 @@ EQUIPE_BASE = {
     "Apoio": ["Alisson Lima"],
     "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
 }
-NOMES_BASE = EQUIPE_BASE["Líder"] + EQUIPE_BASE["Apoio"] + EQUIPE_BASE["Operadoras"]
+NOMES_LISTA = EQUIPE_BASE["Líder"] + EQUIPE_BASE["Apoio"] + EQUIPE_BASE["Operadoras"]
 
 # 2. Barra Lateral de Controle
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 # Inicializa a lista de nomes que vai rodar no dia
-nomes_do_dia = NOMES_BASE.copy()
+nomes_do_dia = NOMES_LISTA.copy()
 novos_nomes = []
 
 # Identificação e captura automática de novas pessoas na planilha
@@ -56,7 +56,7 @@ if uploaded_file:
                     usuarios_identificados.add(str(u).strip())
                     
         for user in usuarios_identificados:
-            if not any(user.upper() == n.upper() for n in NOMES_BASE):
+            if not any(user.upper() == n.upper() for n in NOMES_LISTA):
                 if user not in novos_nomes:
                     novos_nomes.append(user)
         nomes_do_dia += novos_nomes
@@ -148,18 +148,17 @@ if uploaded_file:
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # CORREÇÃO: Títulos limpos sem menção a colunas
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_exemplares, 1.0))
     with c2:
-        st.markdown(f'<div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);"><div class="card-title">🏷️ SKUs FILTRADOS</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi" style="background: rgb(15, 118, 110);"><div class="card-title">🏷️ SKUs FILTRADOS</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento individual
+    # Processamento individual (Aba de Produção por Pessoa)
     data_gerencial = []
     for n in nomes_do_dia:
         if n in remover_do_setor:
@@ -173,11 +172,9 @@ if uploaded_file:
             motivo_individual = dict_motivos_falta.get(n, "Falta administrativa")
             justificativa_texto = f"Ausente. Motivo: {motivo_individual}."
             cargo_atual = "Operadoras"
-            for c, ints in EQUIPE_BASE["Líder"]: 
-                if n in ints: cargo_atual = "Líder"
-            for c, ints in EQUIPE_BASE["Apoio"]: 
-                if n in ints: cargo_atual = "Apoio"
-            if n in novos_nomes: cargo_atual = "Novos Integrantes"
+            if n in EQUIPE_BASE["Líder"]: cargo_atual = "Líder"
+            elif n in EQUIPE_BASE["Apoio"]: cargo_atual = "Apoio"
+            elif n in novos_nomes: cargo_atual = "Novos Integrantes"
         else:
             mov = dict_movimentacao.get(n, {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": "Operadoras"})
             cargo_atual = mov.get("cargo", "Novos Integrantes") if n not in novos_nomes else "Novos Integrantes"
@@ -205,3 +202,4 @@ if uploaded_file:
             "Movimentação Operacional": justificativa_texto
         })
         
+    df_real = pd.DataFrame(data_gerencial)
