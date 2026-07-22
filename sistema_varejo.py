@@ -35,10 +35,10 @@ NOMES_OFICIAIS = [
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
 
-# Campos dinâmicos para ajuste manual dos totais do dia se necessário
-st.sidebar.markdown("### 📊 Ajuste de Totais do Dia")
-total_exemplares_input = st.sidebar.number_input("Total de Exemplares do Dia:", value=50217, step=1)
-total_skus_input = st.sidebar.number_input("Total de SKUs do Dia:", value=1104, step=1)
+# CONTROLE DEFINITIVO: Você digita aqui os totais reais do dia
+st.sidebar.markdown("### 📊 Digite os Totais Reais do Dia")
+total_skus = st.sidebar.number_input("Quantidade Real de SKUs:", value=1104, step=1)
+total_exemplares = st.sidebar.number_input("Quantidade Real de Exemplares:", value=50217, step=1)
 
 st.sidebar.markdown("### ⏳ Justificativas e Paradas")
 dict_paradas = {}
@@ -57,17 +57,13 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica Inteligente de Leitura e Cruzamento de Dados
+# 3. Exibição dos Indicadores Baseados nos Seus Inputs
 if uploaded_file:
-    # Usa os valores digitados/ajustados na barra lateral para garantir flexibilidade total todo dia
-    total_exemplares = total_exemplares_input
-    total_skus = total_skus_input
-    
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards Executivos
+    # Renderização dos Cards HTML de Alta Visibilidade
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -91,7 +87,7 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Distribuição limpa e proporcional baseada no tempo produtivo
+    # Distribuição limpa e proporcional baseada no tempo ativo de produção
     data_base = []
     for n in NOMES_OFICIAIS:
         if "Ellen" in n:
@@ -162,4 +158,4 @@ Atenciosamente,
     """
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=280)
 else:
-    st.info("👋 Painel operacional pronto para uso. Faça o upload da planilha Excel para ativar os indicadores automáticos.")
+    st.info("👋 Painel operacional pronto para uso. Faça o upload da planilha Excel para ativar os indicadores.")
