@@ -32,9 +32,14 @@ EQUIPE = {
     "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
 }
 
-# 2. Barra Lateral de Controle com múltiplos horários
+# 2. Barra Lateral de Controle
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
+
+# NOVO: Filtro de Exibição para Líder e Apoio
+st.sidebar.markdown("### 👁️ Filtro de Exibição (E-mail e Tabela)")
+exibir_kamila = st.sidebar.checkbox("Exibir Kamila Moraes (Líder)", value=True)
+exibir_alisson = st.sidebar.checkbox("Exibir Alisson Lima (Apoio)", value=True)
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
@@ -55,7 +60,7 @@ for cargo, integrantes in EQUIPE.items():
         with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
         with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
         
-        # Segunda Saída (Abas Adicionais)
+        # Segunda Saída
         st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
         c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
         with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
@@ -111,6 +116,12 @@ if uploaded_file:
     lista_completa_nomes = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
     
     for n in lista_completa_nomes:
+        # Aplicação dinâmica dos filtros selecionados pelo usuário
+        if n == "Kamila Moraes" and not exibir_kamila:
+            continue
+        if n == "Alisson Lima" and not exibir_alisson:
+            continue
+            
         if not df_filtrado.empty:
             df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
             qtd_exemplares = int(df_func["TOTAL"].sum())
@@ -121,18 +132,12 @@ if uploaded_file:
         mov = dict_movimentacao[n]
         historico_justificativas = []
         
-        # Validação do primeiro desvio
         if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
             historico_justificativas.append(f"Encaminhada ao {mov['loc1']} das {mov['sai1']} às {mov['ret1']}")
-        
-        # Validação do segundo desvio (aba adicional)
         if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
             historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
             
-        if historico_justificativas:
-            justificativa_texto = " ; ".join(historico_justificativas) + "."
-        else:
-            justificativa_texto = "Atividade normal no setor."
+        justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             
         data_gerencial.append({
             "Cargo": mov["cargo"],
@@ -146,16 +151,17 @@ if uploaded_file:
     st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
-    # 4. Caixa de Texto Gerada do E-mail Organizada por Hierarquia
+    # 4. Caixa de Texto Gerada do E-mail Organizada por Hierarquia Filtrada
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
     
     blocos_email = ""
     for cargo_tipo in ["Líder", "Apoio", "Operadoras"]:
-        blocos_email += f"\\n**{cargo_tipo}:**\\n"
         df_cargo = df_real[df_real["Cargo"] == cargo_tipo]
-        for idx, r in df_cargo.iterrows():
-            blocos_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
+        if not df_cargo.empty:
+            blocos_email += f"\\n**{cargo_tipo}:**\\n"
+            for idx, r in df_cargo.iterrows():
+                blocos_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
 
     texto_final = f"""
 **Assunto:** Relatório de Produtividade e Histórico de Movimentação - Varejo
@@ -164,7 +170,7 @@ Boa tarde, Prezados.
 
 Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.
 
-**1. Resumo de Production Geral (Performance Diária)**
+**1. Resumo de Produção Geral (Performance Diária)**
 • **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
 • **SKUs Movimentados:** {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})
 
@@ -176,4 +182,4 @@ Atenciosamente,
     """
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=320)
 else:
-    st.info("👋 Abas adicionais de horário configuradas. Faça o upload da sua planilha Excel na barra lateral.")
+    st.info("👋 Filtro de operadoras integrado. Faça o upload da sua planilha Excel na barra lateral.")
