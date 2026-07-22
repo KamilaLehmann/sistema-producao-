@@ -32,17 +32,17 @@ EQUIPE_BASE = {
     "Apoio": ["Alisson Lima"],
     "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
 }
-NOMES_LISTA = EQUIPE_BASE["Líder"] + EQUIPE_BASE["Apoio"] + EQUIPE_BASE["Operadoras"]
+NOMES_BASE = EQUIPE_BASE["Líder"] + EQUIPE_BASE["Apoio"] + EQUIPE_BASE["Operadoras"]
 
 # 2. Barra Lateral de Controle
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 # Inicializa a lista de nomes que vai rodar no dia
-nomes_do_dia = NOMES_LISTA.copy()
+nomes_do_dia = NOMES_BASE.copy()
 novos_nomes = []
 
-# Identificação e captura automática de novas pessoas na planilha
+# Identificação e captura automática de novas pessoas na planilha antes de desenhar as abas
 if uploaded_file:
     try:
         wb_temp = openpyxl.load_workbook(uploaded_file, data_only=True)
@@ -55,8 +55,10 @@ if uploaded_file:
                 if u:
                     usuarios_identificados.add(str(u).strip())
                     
+        # Se achou alguém fora da lista base, joga nos novos integrantes
         for user in usuarios_identificados:
-            if not any(user.upper() == n.upper() for n in NOMES_LISTA):
+            # Compara sem diferenciar maiúscula de minúscula
+            if not any(user.upper() == n.upper() for n in NOMES_BASE):
                 if user not in novos_nomes:
                     novos_nomes.append(user)
         nomes_do_dia += novos_nomes
@@ -67,7 +69,7 @@ if uploaded_file:
 data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now())
 data_formatada = data_produtividade.strftime("%d/%m")
 
-# Filtros gerenciais
+# Filtros baseados em todos os nomes encontrados no dia
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
 remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", nomes_do_dia)
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", nomes_do_dia)
@@ -76,6 +78,7 @@ st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 dict_motivos_falta = {}
 
+# Monta a estrutura de cargos incluindo a nova aba automática se houver alguém novo
 equipe_lateral = EQUIPE_BASE.copy()
 if novos_nomes:
     equipe_lateral["Novos Integrantes"] = novos_nomes
@@ -100,6 +103,7 @@ for cargo, integrantes in equipe_lateral.items():
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
             c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
             
+            # Valores padrão apenas para a equipe antiga conhecida do dia 22/07
             init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
             init_ret1 = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
             init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
@@ -121,7 +125,7 @@ for cargo, integrantes in equipe_lateral.items():
             }
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-# 3. Lógica principal de Varredura Cirúrgica de Células
+# 3. Lógica principal de consolidação
 if uploaded_file:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet = wb.active
@@ -132,16 +136,12 @@ if uploaded_file:
             val_i = sheet.cell(row=row, column=9).value   # Coluna I (TOTAL)
             val_m = sheet.cell(row=row, column=13).value  # Coluna M (USUARIO)
             
-            if val_m is not None:
-                # CORREÇÃO CRÍTICA: Garante que mesmo células vazias ou com fórmulas sejam tratadas como número zero
-                try:
-                    num_i = float(val_i) if val_i is not None else 0.0
-                except:
-                    num_i = 0.0
-                dados_visiveis.append({"TOTAL": num_i, "USUARIO": str(val_m).strip().upper()})
+            if val_i is not None and val_m is not None:
+                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip()})
                 
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
+        df_filtrado["TOTAL"] = pd.to_numeric(df_filtrado["TOTAL"], errors='coerce').fillna(0)
         total_exemplares = int(df_filtrado["TOTAL"].sum())
         total_skus = int(len(df_filtrado))
     else:
@@ -154,15 +154,15 @@ if uploaded_file:
     
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_exemplares, 1.0))
     with c2:
-        st.markdown(f'<div class="card-kpi" style="background: rgb(15, 118, 110);"><div class="card-title">🏷️ SKUs FILTRADOS</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);"><div class="card-title">🏷️ SKUs FILTRADOS (CONTAGEM DA COLUNA I)</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento individual puxando os dados reais convertidos
+    # Processamento dinâmico da tabela respeitando novos nomes
     data_gerencial = []
     for n in nomes_do_dia:
         if n in remover_do_setor:
@@ -184,7 +184,7 @@ if uploaded_file:
             cargo_atual = mov.get("cargo", "Novos Integrantes") if n not in novos_nomes else "Novos Integrantes"
             
             if not df_filtrado.empty:
-                df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
+                df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
                 qtd_skus = int(len(df_func))
             else:
@@ -196,11 +196,3 @@ if uploaded_file:
             if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
                 historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
                 
-            justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
-            
-        data_gerencial.append({
-            "Cargo": cargo_atual,
-            "Colaboradora": n,
-            "Exemplares": qtd_exemplares,
-            "SKUs": qtd_skus,
-            "Movimentação Operacional": justificativa_texto
