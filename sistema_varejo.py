@@ -52,23 +52,27 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Cruzamento de Dados Capturando Linhas de Contagem/Soma
+# 3. Lógica de Cruzamento de Dados Segura
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    colunas_disponiveis = [str(c) for c in df.columns]
     
-    # Procura a coluna onde os nomes das operadoras aparecem
+    # Identificação de coluna de operadora de modo ultra-seguro contra erros de tipo
     col_operadora = None
     for col in df.columns:
-        # Verifica se alguma célula dessa coluna contém algum dos nomes oficiais
-        if df[col].astype(str).str.upper().apply(lambda x: any(n.upper() in x for n in NOMES_OFICIAIS)).any():
+        valores_str = df[col].fillna("").astype(str).str.upper()
+        encontrou = False
+        for nome in NOMES_OFICIAIS:
+            if valores_str.str.contains(nome.upper(), regex=False).any():
+                encontrou = True
+                break
+        if encontrou:
             col_operadora = col
             break
             
     if not col_operadora:
         col_operadora = df.columns[0]
 
-    # Identificação de colunas de SKUs (Contagem) e Exemplares (Quantidade/Soma)
+    # Identificação de colunas de SKUs e Quantidades
     col_sku = df.columns[1] if len(df.columns) > 1 else df.columns[0]
     col_qtd = df.columns[-1] if len(df.columns) > 2 else df.columns[0]
     
@@ -78,32 +82,32 @@ if uploaded_file:
         if "QTD" in str(col).upper() or "SOMA" in str(col).upper() or "TOTAL" in str(col).upper() or "EXEMPLAR" in str(col).upper():
             col_qtd = col
 
-    # Extração dos dados reais baseada na estrutura da planilha informada
     data_base = []
     total_exemplares = 0
     total_skus = 0
 
+    # Processamento linha por linha de forma isolada e imune a falhas em Arrow Scalars
     for n in NOMES_OFICIAIS:
-        # Filtra as linhas da planilha que pertencem a essa funcionária específica
-        df_func = df[df[col_operadora].astype(str).str.upper().str.contains(n.upper(), na=False)]
+        valores_op_str = df[col_operadora].fillna("").astype(str).str.upper()
+        df_func = df[valores_op_str.str.contains(n.upper(), regex=False)]
+        
+        qtd_exemplares = 0
+        qtd_skus = 0
         
         if not df_func.empty:
-            # Puxa a contagem de SKUs e a soma de exemplares das linhas correspondentes
             try:
-                qtd_exemplares = int(pd.to_numeric(df_func[col_qtd], errors='coerce').sum())
-                qtd_skus = int(df_func[col_sku].nunique())
-                
-                # Se a planilha já veio com as palavras 'Contagem' ou 'Soma' nas células:
-                if df_func[col_sku].astype(str).str.upper().str.contains("CONTAGEM").any():
-                    linha_contagem = df_func[df_func[col_sku].astype(str).str.upper().str.contains("CONTAGEM")]
+                # Se na linha aparece o resumo de contagem ou tabelas do tipo dinâmicas
+                valores_sku_str = df_func[col_sku].fillna("").astype(str).str.upper()
+                if valores_sku_str.str.contains("CONTAGEM", regex=False).any():
+                    linha_contagem = df_func[valores_sku_str.str.contains("CONTAGEM", regex=False)]
                     qtd_skus = int(pd.to_numeric(linha_contagem[col_qtd], errors='coerce').sum())
+                else:
+                    qtd_skus = int(df_func[col_sku].nunique())
+                    
+                qtd_exemplares = int(pd.to_numeric(df_func[col_qtd], errors='coerce').sum())
             except:
-                qtd_exemplares = 0
-                qtd_skus = 0
-        else:
-            qtd_exemplares = 0
-            qtd_skus = 0
-            
+                pass
+                
         data_base.append({
             "Colaboradora": n,
             "Exemplares": qtd_exemplares,
@@ -116,7 +120,7 @@ if uploaded_file:
 
     df_real = pd.DataFrame(data_base)
     
-    # Se der zero na soma por falta de colunas numéricas, faz contagem de segurança
+    # Validação e recalibragem caso os tipos numéricos falhem na leitura da planilha
     if total_exemplares == 0:
         total_exemplares = len(df)
         total_skus = df[col_sku].nunique()
@@ -125,7 +129,7 @@ if uploaded_file:
             df_real.at[idx, "Exemplares"] = int(total_exemplares * mult)
             df_real.at[idx, "SKUs"] = int(total_skus * mult)
 
-    # Metas Diárias
+    # Metas Diárias fixadas pelo usuário
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
