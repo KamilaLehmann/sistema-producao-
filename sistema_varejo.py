@@ -31,28 +31,33 @@ NOMES_OFICIAIS = [
     "Gabriele", "Beatriz Mascarenhas", "Alisson Lima", "Kamila Moraes"
 ]
 
-# 2. Barra Lateral de Controle
+# 2. Barra Lateral de Controle com horários de movimentação
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
-st.sidebar.markdown("### ⏳ Justificativas e Paradas")
-dict_paradas = {}
-dict_obs = {}
+st.sidebar.markdown("### ⏳ Movimentação de Horários")
+dict_movimentacao = {}
 
 for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
-    col_p, col_o = st.sidebar.columns(2)
+    c_sai, c_ret, c_loc = st.sidebar.columns(3)
     
-    default_min = 75 if "Gabriele" in op or "Ellen" in op else (465 if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else 0)
-    default_obs = "Retornou às 07h30." if "Gabriele" in op or "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else "Sem ocorrências.")
+    # Valores padrão de exemplo baseados no seu e-mail do dia 22/07
+    init_sai = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else "N/A"
+    init_ret = "07h30" if op == "Gabriele" else ("Não retornou" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else "N/A")
+    init_loc = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else "Sem desvios"
     
-    with col_p:
-        dict_paradas[op] = st.number_input("Min:", value=default_min, key=f"p_{op}", step=5, label_visibility="collapsed")
-    with col_o:
-        dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
+    with c_sai:
+        sai_val = st.text_input("Saída:", value=init_sai, key=f"sai_{op}")
+    with c_ret:
+        ret_val = st.text_input("Retorno:", value=init_ret, key=f"ret_{op}")
+    with c_loc:
+        loc_val = st.text_input("Local:", value=init_loc, key=f"loc_{op}")
+        
+    dict_movimentacao[op] = {"saida": sai_val, "retorno": ret_val, "local": loc_val}
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica Avançada: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
+# 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet = wb.active
@@ -116,17 +121,23 @@ if uploaded_file:
         else:
             qtd_exemplares, qtd_skus = 0, 0
             
+        # Monta o texto explicativo da movimentação com base nos inputs inseridos
+        mov = dict_movimentacao[n]
+        if mov["saida"] != "N/A" and mov["saida"] != "":
+            justificativa_texto = f"Encaminhada ao {mov['local']} às {mov['saida']}. Retorno: {mov['retorno']}."
+        else:
+            justificativa_texto = "Sem ocorrências / Atividade normal."
+            
         data_gerencial.append({
             "Colaboradora": n,
             "Exemplares": qtd_exemplares,
             "SKUs": qtd_skus,
-            "Tempo Parado": f"{dict_paradas[n]} min",
-            "Justificativa": dict_obs[n]
+            "Movimentação Operacional": justificativa_texto
         })
         
     df_real = pd.DataFrame(data_gerencial)
         
-    # Exibição da Tabela Gerencial em tamanho completo na tela
+    # Exibição da Tabela Gerencial limpa em tamanho completo na tela
     st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
@@ -137,25 +148,25 @@ if uploaded_file:
     linhas_email = ""
     for idx, r in df_real.iterrows():
         if r['Exemplares'] > 0 or r['SKUs'] > 0:
-            linhas_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | Parada: {r['Tempo Parado']} ({r['Justificativa']})\\n"
+            linhas_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
 
     texto_final = f"""
-**Assunto:** Relatório de Produtividade e Indicadores de Parada - Varejo
+**Assunto:** Relatório de Produtividade e Histórico de Movimentação - Varejo
 
 Boa tarde, Prezados.
 
-Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado dos indicadores de atingimento de metas.
+Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.
 
 **1. Resumo de Produção Geral (Performance Diária)**
 • **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
 • **SKUs Movimentados:** {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})
 
-**2. Indicadores de Desempenho Coletivo e Tempo de Parada**
+**2. Indicadores de Desempenho Coletivo e Histórico de Horários**
 {linhas_email}
-*Nota: As paradas registradas acima ocorreram estritamente de acordo com o fluxo operacional e remanejamentos preventivos de estoque.*
+*Nota: Os remanejamentos de colaboradores ocorreram preventivamente devido à flutuação no volume de pedidos disponíveis em estoque.*
 
 Atenciosamente,
     """
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=280)
 else:
-    st.info("👋 Alinhamento concluído. Faça o upload da sua planilha Excel filtrada na barra lateral.")
+    st.info("👋 Configuração de horários de saída/retorno concluída. Faça o upload da sua planilha Excel na barra lateral.")
