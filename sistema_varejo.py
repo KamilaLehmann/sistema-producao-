@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import openpyxl
+from datetime import datetime
 
 # 1. Configuração e Estilização de Design Premium (HTML / CSS)
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
@@ -37,9 +38,13 @@ NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
+# NOVO: Seleção da data da produtividade para atualizar o e-mail automaticamente
+data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now())
+data_formatada = data_produtividade.strftime("%d/%m")
+
 # Filtros gerenciais limpos
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
-remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela e E-mail):", NOMES_LISTA)
+remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA)
 
 st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
@@ -59,15 +64,12 @@ for cargo, integrantes in EQUIPE.items():
             
         is_ausente = op in faltas_selecionadas
         
-        # CÓDIGO DA ABA DE AUSÊNCIA DINÂMICA
         if is_ausente:
             st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
-            # Esta linha abaixo cria a aba de texto embaixo do nome de quem faltou
             dict_motivos_falta[op] = st.sidebar.text_input(f"Motivo da falta de {op}:", value="Falta administrativa", key=f"mot_falta_{op}")
             dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
         else:
             st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
-            # Primeira Saída
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
             c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
             
@@ -79,7 +81,6 @@ for cargo, integrantes in EQUIPE.items():
             with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
             with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
             
-            # Segunda Saída
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
             c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
             with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
@@ -176,15 +177,12 @@ if uploaded_file:
     st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
-    # 4. Caixa de Texto Gerada do E-mail
+    # 4. Caixa de Texto Gerada do E-mail Padronizado Conforme Solicitado
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
     
-    blocos_email = ""
-    for cargo_tipo in ["Líder", "Apoio", "Operadoras"]:
-        df_cargo = df_real[df_real["Cargo"] == cargo_tipo]
-        if not df_cargo.empty:
-            blocos_email += "\n" + f"**{cargo_tipo}:**" + "\n"
-            for idx, r in df_cargo.iterrows():
-                blocos_email += f"• {r['Colaboradora']}: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | {r['Movimentação Operacional']}\n"
-
+    texto_final = f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\nreferente ao dia {data_formatada}.\n\n--------------------------------\nResumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n--------------------------------\n\nAtenciosamente,"
+    
+    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final, height=240)
+else:
+    st.info("👋 Padrão de e-mail atualizado. Faça o upload da sua planilha Excel na barra lateral.")
