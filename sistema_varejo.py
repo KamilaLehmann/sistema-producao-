@@ -121,7 +121,7 @@ for cargo, integrantes in equipe_lateral.items():
             }
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-# 3. Lógica principal
+# 3. Lógica principal de Varredura Cirúrgica de Células
 if uploaded_file:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet = wb.active
@@ -132,12 +132,16 @@ if uploaded_file:
             val_i = sheet.cell(row=row, column=9).value   # Coluna I (TOTAL)
             val_m = sheet.cell(row=row, column=13).value  # Coluna M (USUARIO)
             
-            if val_i is not None and val_m is not None:
-                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip()})
+            if val_m is not None:
+                # CORREÇÃO CRÍTICA: Garante que mesmo células vazias ou com fórmulas sejam tratadas como número zero
+                try:
+                    num_i = float(val_i) if val_i is not None else 0.0
+                except:
+                    num_i = 0.0
+                dados_visiveis.append({"TOTAL": num_i, "USUARIO": str(val_m).strip().upper()})
                 
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
-        df_filtrado["TOTAL"] = pd.to_numeric(df_filtrado["TOTAL"], errors='coerce').fillna(0)
         total_exemplares = int(df_filtrado["TOTAL"].sum())
         total_skus = int(len(df_filtrado))
     else:
@@ -158,7 +162,7 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento individual puxando os dados reais da coluna I e M
+    # Processamento individual puxando os dados reais convertidos
     data_gerencial = []
     for n in nomes_do_dia:
         if n in remover_do_setor:
@@ -180,7 +184,7 @@ if uploaded_file:
             cargo_atual = mov.get("cargo", "Novos Integrantes") if n not in novos_nomes else "Novos Integrantes"
             
             if not df_filtrado.empty:
-                df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
+                df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
                 qtd_skus = int(len(df_func))
             else:
@@ -200,6 +204,3 @@ if uploaded_file:
             "Exemplares": qtd_exemplares,
             "SKUs": qtd_skus,
             "Movimentação Operacional": justificativa_texto
-        })
-        
-    df_real = pd.DataFrame(data_gerencial)
