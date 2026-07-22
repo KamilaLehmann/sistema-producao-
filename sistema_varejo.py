@@ -26,64 +26,34 @@ st.markdown("""
 
 st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
 
-# Lista Base Fixa da Equipe Atual
-EQUIPE_BASE = {
+# Organização da equipe por cargos oficiais
+EQUIPE = {
     "Líder": ["Kamila Moraes"],
     "Apoio": ["Alisson Lima"],
     "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
 }
-NOMES_BASE = EQUIPE_BASE["Líder"] + EQUIPE_BASE["Apoio"] + EQUIPE_BASE["Operadoras"]
+NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
 
-# 2. Barra Lateral de Controle
+# 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
-# Inicializa a lista de nomes que vai rodar no dia
-nomes_do_dia = NOMES_BASE.copy()
-novos_nomes = []
-
-# Identificação e captura automática de novas pessoas na planilha antes de desenhar as abas
-if uploaded_file:
-    try:
-        wb_temp = openpyxl.load_workbook(uploaded_file, data_only=True)
-        sheet_temp = wb_temp.active
-        usuarios_identificados = set()
-        
-        for r in range(2, sheet_temp.max_row + 1):
-            if sheet_temp.row_dimensions[r].hidden == False:
-                u = sheet_temp.cell(row=r, column=13).value
-                if u:
-                    usuarios_identificados.add(str(u).strip())
-                    
-        # Se achou alguém fora da lista base, joga nos novos integrantes
-        for user in usuarios_identificados:
-            # Compara sem diferenciar maiúscula de minúscula
-            if not any(user.upper() == n.upper() for n in NOMES_BASE):
-                if user not in novos_nomes:
-                    novos_nomes.append(user)
-        nomes_do_dia += novos_nomes
-    except:
-        pass
-
-# Data da Produtividade
+# NOVO: Seleção da data da produtividade para atualizar o e-mail automaticamente
 data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now())
 data_formatada = data_produtividade.strftime("%d/%m")
 
-# Filtros baseados em todos os nomes encontrados no dia
+# Filtros gerenciais limpos
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
-remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", nomes_do_dia)
-faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", nomes_do_dia)
+remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA)
+
+st.sidebar.markdown("### ❌ Ausências do Dia")
+faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 dict_motivos_falta = {}
 
-# Monta a estrutura de cargos incluindo a nova aba automática se houver alguém novo
-equipe_lateral = EQUIPE_BASE.copy()
-if novos_nomes:
-    equipe_lateral["Novos Integrantes"] = novos_nomes
-
-for cargo, integrantes in equipe_lateral.items():
+for cargo, integrantes in EQUIPE.items():
     integrantes_visiveis = [i for i in integrantes if i not in remover_do_setor]
     if integrantes_visiveis:
         st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
@@ -103,7 +73,6 @@ for cargo, integrantes in equipe_lateral.items():
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
             c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
             
-            # Valores padrão apenas para a equipe antiga conhecida do dia 22/07
             init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
             init_ret1 = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
             init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
@@ -125,7 +94,7 @@ for cargo, integrantes in equipe_lateral.items():
             }
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-# 3. Lógica principal de consolidação
+# 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet = wb.active
@@ -137,7 +106,7 @@ if uploaded_file:
             val_m = sheet.cell(row=row, column=13).value  # Coluna M (USUARIO)
             
             if val_i is not None and val_m is not None:
-                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip()})
+                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip().upper()})
                 
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
@@ -162,9 +131,9 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento dinâmico da tabela respeitando novos nomes
+    # Processamento dos indicadores individuais
     data_gerencial = []
-    for n in nomes_do_dia:
+    for n in NOMES_LISTA:
         if n in remover_do_setor:
             continue
             
@@ -176,15 +145,13 @@ if uploaded_file:
             motivo_individual = dict_motivos_falta.get(n, "Falta administrativa")
             justificativa_texto = f"Ausente. Motivo: {motivo_individual}."
             cargo_atual = "Operadoras"
-            if n in EQUIPE_BASE["Líder"]: cargo_atual = "Líder"
-            elif n in EQUIPE_BASE["Apoio"]: cargo_atual = "Apoio"
-            elif n in novos_nomes: cargo_atual = "Novos Integrantes"
+            for c, ints in EQUIPE.items():
+                if n in ints: cargo_atual = c
         else:
-            mov = dict_movimentacao.get(n, {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": "Operadoras"})
-            cargo_atual = mov.get("cargo", "Novos Integrantes") if n not in novos_nomes else "Novos Integrantes"
-            
+            mov = dict_movimentacao[n]
+            cargo_atual = mov["cargo"]
             if not df_filtrado.empty:
-                df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
+                df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
                 qtd_skus = int(len(df_func))
             else:
@@ -196,3 +163,26 @@ if uploaded_file:
             if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
                 historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
                 
+            justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
+            
+        data_gerencial.append({
+            "Cargo": cargo_atual,
+            "Colaboradora": n,
+            "Exemplares": qtd_exemplares,
+            "SKUs": qtd_skus,
+            "Movimentação Operacional": justificativa_texto
+        })
+        
+    df_real = pd.DataFrame(data_gerencial)
+    st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
+    st.dataframe(df_real, use_container_width=True, hide_index=True)
+
+    # 4. Caixa de Texto Gerada do E-mail Padronizado Conforme Solicitado
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
+    
+    texto_final = f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\nreferente ao dia {data_formatada}.\n\n--------------------------------\nResumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n--------------------------------\n\nAtenciosamente,"
+    
+    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final, height=240)
+else:
+    st.info("👋 Padrão de e-mail atualizado. Faça o upload da sua planilha Excel na barra lateral.")
