@@ -25,37 +25,49 @@ st.markdown("""
 
 st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
 
-# Lista oficial de operadoras mapeadas a partir da sua imagem
-NOMES_OFICIAIS = [
-    "Rosana Delfino", "Anacaroline", "Karoline Gonçalves", 
-    "Gabriele", "Beatriz Mascarenhas", "Alisson Lima", "Kamila Moraes"
-]
+# Organização da equipe por cargos oficiais
+EQUIPE = {
+    "Líder": ["Kamila Moraes"],
+    "Apoio": ["Alisson Lima"],
+    "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
+}
 
-# 2. Barra Lateral de Controle com horários de movimentação
+# 2. Barra Lateral de Controle com múltiplos horários
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 
-for op in NOMES_OFICIAIS:
-    st.sidebar.markdown(f"**👤 {op}**")
-    c_sai, c_ret, c_loc = st.sidebar.columns(3)
-    
-    # Valores padrão de exemplo baseados no seu e-mail do dia 22/07
-    init_sai = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else "N/A"
-    init_ret = "07h30" if op == "Gabriele" else ("Não retornou" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else "N/A")
-    init_loc = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else "Sem desvios"
-    
-    with c_sai:
-        sai_val = st.text_input("Saída:", value=init_sai, key=f"sai_{op}")
-    with c_ret:
-        ret_val = st.text_input("Retorno:", value=init_ret, key=f"ret_{op}")
-    with c_loc:
-        loc_val = st.text_input("Local:", value=init_loc, key=f"loc_{op}")
+for cargo, integrantes in EQUIPE.items():
+    st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
+    for op in integrantes:
+        st.sidebar.markdown(f"**👤 {op}**")
         
-    dict_movimentacao[op] = {"saida": sai_val, "retorno": ret_val, "local": loc_val}
-    st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
+        # Primeira Saída
+        st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
+        c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
+        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+        init_ret1 = "07h30" if op == "Gabriele" else ("Não retornou" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else "")
+        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+        
+        with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
+        with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
+        with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
+        
+        # Segunda Saída (Abas Adicionais)
+        st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
+        c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
+        with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
+        with c_ret2: ret2 = st.text_input("Retorno 2:", value="", key=f"ret2_{op}")
+        with c_loc2: loc2 = st.text_input("Local 2:", value="", key=f"loc2_{op}")
+            
+        dict_movimentacao[op] = {
+            "sai1": sai1, "ret1": ret1, "loc1": loc1,
+            "sai2": sai2, "ret2": ret2, "loc2": loc2,
+            "cargo": cargo
+        }
+        st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
@@ -63,7 +75,6 @@ if uploaded_file:
     sheet = wb.active
     
     dados_visiveis = []
-    
     for row in range(2, sheet.max_row + 1):
         if sheet.row_dimensions[row].hidden == False:
             val_i = sheet.cell(row=row, column=9).value   # Coluna I (TOTAL)
@@ -75,45 +86,31 @@ if uploaded_file:
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
         df_filtrado["TOTAL"] = pd.to_numeric(df_filtrado["TOTAL"], errors='coerce').fillna(0)
-        
         total_exemplares = int(df_filtrado["TOTAL"].sum())
         total_skus = int(len(df_filtrado))
     else:
         total_exemplares, total_skus = 50271, 1104
         df_filtrado = pd.DataFrame(columns=["TOTAL", "USUARIO"])
 
-    # Metas Diárias fixadas do setor
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards HTML de Alta Visibilidade
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f"""
-            <div class="card-kpi">
-                <div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div>
-                <div class="card-value">{total_exemplares:,} un</div>
-                <div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_exemplares, 1.0))
-        
     with c2:
-        st.markdown(f"""
-            <div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);">
-                <div class="card-title">🏷️ SKUs FILTRADOS (CONTAGEM DA COLUNA I)</div>
-                <div class="card-value">{total_skus:,}</div>
-                <div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);"><div class="card-title">🏷️ SKUs FILTRADOS (CONTAGEM DA COLUNA I)</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento dos indicadores individuais focado na lista oficial
+    # Processamento dos indicadores individuais por cargo estruturado
     data_gerencial = []
-    for n in NOMES_OFICIAIS:
+    lista_completa_nomes = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
+    
+    for n in lista_completa_nomes:
         if not df_filtrado.empty:
             df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
             qtd_exemplares = int(df_func["TOTAL"].sum())
@@ -121,14 +118,24 @@ if uploaded_file:
         else:
             qtd_exemplares, qtd_skus = 0, 0
             
-        # Monta o texto explicativo da movimentação com base nos inputs inseridos
         mov = dict_movimentacao[n]
-        if mov["saida"] != "N/A" and mov["saida"] != "":
-            justificativa_texto = f"Encaminhada ao {mov['local']} às {mov['saida']}. Retorno: {mov['retorno']}."
+        historico_justificativas = []
+        
+        # Validação do primeiro desvio
+        if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
+            historico_justificativas.append(f"Encaminhada ao {mov['loc1']} das {mov['sai1']} às {mov['ret1']}")
+        
+        # Validação do segundo desvio (aba adicional)
+        if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
+            historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
+            
+        if historico_justificativas:
+            justificativa_texto = " ; ".join(historico_justificativas) + "."
         else:
-            justificativa_texto = "Sem ocorrências / Atividade normal."
+            justificativa_texto = "Atividade normal no setor."
             
         data_gerencial.append({
+            "Cargo": mov["cargo"],
             "Colaboradora": n,
             "Exemplares": qtd_exemplares,
             "SKUs": qtd_skus,
@@ -136,19 +143,19 @@ if uploaded_file:
         })
         
     df_real = pd.DataFrame(data_gerencial)
-        
-    # Exibição da Tabela Gerencial limpa em tamanho completo na tela
     st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
-    # 4. Caixa de Texto Gerada do E-mail Prontinha para Copiar
+    # 4. Caixa de Texto Gerada do E-mail Organizada por Hierarquia
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
     
-    linhas_email = ""
-    for idx, r in df_real.iterrows():
-        if r['Exemplares'] > 0 or r['SKUs'] > 0:
-            linhas_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
+    blocos_email = ""
+    for cargo_tipo in ["Líder", "Apoio", "Operadoras"]:
+        blocos_email += f"\\n**{cargo_tipo}:**\\n"
+        df_cargo = df_real[df_real["Cargo"] == cargo_tipo]
+        for idx, r in df_cargo.iterrows():
+            blocos_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
 
     texto_final = f"""
 **Assunto:** Relatório de Produtividade e Histórico de Movimentação - Varejo
@@ -157,16 +164,16 @@ Boa tarde, Prezados.
 
 Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.
 
-**1. Resumo de Produção Geral (Performance Diária)**
+**1. Resumo de Production Geral (Performance Diária)**
 • **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
 • **SKUs Movimentados:** {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})
 
-**2. Indicadores de Desempenho Coletivo e Histórico de Horários**
-{linhas_email}
+**2. Indicadores de Desempenho Coletivo e Histórico por Função**
+{blocos_email}
 *Nota: Os remanejamentos de colaboradores ocorreram preventivamente devido à flutuação no volume de pedidos disponíveis em estoque.*
 
 Atenciosamente,
     """
-    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=280)
+    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=320)
 else:
-    st.info("👋 Configuração de horários de saída/retorno concluída. Faça o upload da sua planilha Excel na barra lateral.")
+    st.info("👋 Abas adicionais de horário configuradas. Faça o upload da sua planilha Excel na barra lateral.")
