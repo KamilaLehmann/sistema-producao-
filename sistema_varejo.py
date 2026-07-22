@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Production - Varejo</h1>", unsafe_allow_html=True)
 
 # Lista oficial de operadoras informadas
 NOMES_OFICIAIS = [
@@ -31,7 +31,7 @@ NOMES_OFICIAIS = [
     "Ellen Kelly", "Alisson Lima", "Kamila Moraes", "Gabrielle Aparecida"
 ]
 
-# 2. Barra Lateral de Controle (Inputs de Texto/Número)
+# 2. Barra Lateral de Controle
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
 
@@ -39,12 +39,10 @@ st.sidebar.markdown("### ⏳ Justificativas e Paradas")
 dict_paradas = {}
 dict_obs = {}
 
-# Gera os campos de forma dinâmica para a lista oficial das meninas
 for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
-    col_p, col_o = st.sidebar.columns([1, 2])
+    col_p, col_o = st.sidebar.columns()
     
-    # Valores padrão específicos da mensagem para o dia 22/07, para as demais inicia zerado
     default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
     default_obs = "Retornou às 07h30 do setor loja." if "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else "Sem ocorrências.")
     
@@ -54,16 +52,14 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Cruzamento de Dados Real via Python
+# 3. Lógica de Cruzamento de Dados Correta
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     
-    # Varredura inteligente nas colunas para identificar qual possui os nomes informados
     col_operadora = None
     max_matches = 0
     
     for col in df.columns:
-        # Conta quantas linhas batem parcialmente ou totalmente com a nossa lista de nomes
         matches = df[col].astype(str).str.upper().apply(
             lambda val: any(nome.upper() in val for nome in NOMES_OFICIAIS)
         ).sum()
@@ -71,7 +67,6 @@ if uploaded_file:
             max_matches = matches
             col_operadora = col
             
-    # Totais Gerais para os Cards de Alta Visibilidade (Macro-Indicadores)
     total_exemplares = len(df)
     total_skus = df.iloc[:, 1].nunique() if len(df.columns) > 1 else df.iloc[:, 0].nunique()
     
@@ -79,7 +74,7 @@ if uploaded_file:
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards HTML de Alta Visibilidade
+    # Renderização dos Cards HTML
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -103,18 +98,16 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Processamento Real por Operadora Encontrada
+    # Agrupamento Seguro corrigido fixando a coluna de contagem
     if col_operadora and max_matches > 0:
-        col_sku_id = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+        col_aux = df.columns[0] # Usa estritamente a primeira coluna para fazer o cálculo
         
-        # Agrupamento real do pandas
         df_real = df.groupby(col_operadora).agg(
-            Exemplares=(col_sku_id, 'count'),
-            SKUs=(col_sku_id, 'nunique')
+            Exemplares=(col_aux, 'count'),
+            SKUs=(col_aux, 'nunique')
         ).reset_index()
         df_real.columns = ["Colaboradora", "Exemplares", "SKUs"]
         
-        # Mapeia as paradas informadas na lateral de forma inteligente
         df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
             lambda x: f"{next((dict_paradas[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), 0)} min"
         )
@@ -122,11 +115,9 @@ if uploaded_file:
             lambda x: next((dict_obs[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), "Sem ocorrências.")
         )
     else:
-        # Fallback caso a planilha não contenha nenhuma coluna correspondente aos nomes
         st.warning("⚠️ Não localizamos os nomes das operadoras nas colunas do arquivo. Exibindo estrutura base calibrada.")
         data_base = []
         for n in NOMES_OFICIAIS:
-            # Distribui valores proporcionais fictícios se a planilha estiver sem nomes
             mult = 0.35 if "Ellen" in n else 0.10
             data_base.append({
                 "Colaboradora": n,
@@ -137,7 +128,7 @@ if uploaded_file:
             })
         df_real = pd.DataFrame(data_base)
         
-    # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
+    # Layout Lado a Lado
     col_graf, col_tab = st.columns([1, 1.3])
     with col_graf:
         st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📈 Gráfico de Produção</h3>", unsafe_allow_html=True)
