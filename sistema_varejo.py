@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Production - Varejo</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
 
 # Lista oficial de operadoras informadas
 NOMES_OFICIAIS = [
@@ -98,14 +98,11 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Agrupamento Seguro corrigido fixando a coluna de contagem
+    # Agrupamento Seguro sem conflito de Index do Pandas
     if col_operadora and max_matches > 0:
-        col_aux = df.columns[0] # Usa estritamente a primeira coluna para fazer o cálculo
+        primeira_col = df.columns[0]
         
-        df_real = df.groupby(col_operadora).agg(
-            Exemplares=(col_aux, 'count'),
-            SKUs=(col_aux, 'nunique')
-        ).reset_index()
+        df_real = df.groupby(col_operadora)[primeira_col].agg(['count', 'nunique']).reset_index()
         df_real.columns = ["Colaboradora", "Exemplares", "SKUs"]
         
         df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
