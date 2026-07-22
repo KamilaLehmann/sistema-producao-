@@ -43,11 +43,10 @@ remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela e E-mail):",
 
 st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
-# NOVO: Caixa de texto para digitar o motivo real da ausência/falta
-motivo_ausencia = st.sidebar.text_input("Motivo das Ausências:", value="Falta administrativa / Banco de horas")
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
+dict_motivos_falta = {}
 
 for cargo, integrantes in EQUIPE.items():
     integrantes_visiveis = [i for i in integrantes if i not in remover_do_setor]
@@ -59,33 +58,39 @@ for cargo, integrantes in EQUIPE.items():
             continue
             
         is_ausente = op in faltas_selecionadas
-        label_op = f"👤 {op} (AUSENTE)" if is_ausente else f"**👤 {op}**"
-        st.sidebar.markdown(label_op, unsafe_allow_html=True)
+        label_op = f"GS_AUSD" if is_ausente else f"**👤 {op}**"
         
-        # Primeira Saída
-        st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
-        c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
-        
-        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
-        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente else ("07h30" if op == "Rosana Delfino" and not is_ausente else ""))
-        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
-        
-        with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
-        with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
-        with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
-        
-        # Segunda Saída
-        st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
-        c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
-        with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
-        with c_ret2: ret2 = st.text_input("Retorno 2:", value="", key=f"ret2_{op}")
-        with c_loc2: loc2 = st.text_input("Local 2:", value="", key=f"loc2_{op}")
+        if is_ausente:
+            st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
+            # Cria um campo de texto individual para o motivo da falta daquela operadora específica
+            dict_motivos_falta[op] = st.sidebar.text_input(f"Motivo da falta de {op}:", value="Falta administrativa", key=f"mot_falta_{op}")
+            dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
+        else:
+            st.sidebar.markdown(label_op, unsafe_allow_html=True)
+            # Primeira Saída
+            st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
+            c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
             
-        dict_movimentacao[op] = {
-            "sai1": sai1, "ret1": ret1, "loc1": loc1,
-            "sai2": sai2, "ret2": ret2, "loc2": loc2,
-            "cargo": cargo
-        }
+            init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+            init_ret1 = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
+            init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+            
+            with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
+            with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
+            with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
+            
+            # Segunda Saída
+            st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
+            c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
+            with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
+            with c_ret2: ret2 = st.text_input("Retorno 2:", value="", key=f"ret2_{op}")
+            with c_loc2: loc2 = st.text_input("Local 2:", value="", key=f"loc2_{op}")
+                
+            dict_movimentacao[op] = {
+                "sai1": sai1, "ret1": ret1, "loc1": loc1,
+                "sai2": sai2, "ret2": ret2, "loc2": loc2,
+                "cargo": cargo
+            }
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
@@ -131,15 +136,19 @@ if uploaded_file:
         if n in remover_do_setor:
             continue
             
-        mov = dict_movimentacao[n]
         is_ausente = n in faltas_selecionadas
         
         if is_ausente:
             qtd_exemplares = 0
             qtd_skus = 0
-            # Integração do motivo de ausência dinâmico digitado por você
-            justificativa_texto = f"Ausente. Motivo: {motivo_ausencia}."
+            motivo_individual = dict_motivos_falta.get(n, "Falta administrativa")
+            justificativa_texto = f"Ausente. Motivo: {motivo_individual}."
+            cargo_atual = "Operadoras"
+            for c, ints in EQUIPE.items():
+                if n in ints: cargo_atual = c
         else:
+            mov = dict_movimentacao[n]
+            cargo_atual = mov["cargo"]
             if not df_filtrado.empty:
                 df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
@@ -156,7 +165,7 @@ if uploaded_file:
             justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             
         data_gerencial.append({
-            "Cargo": mov["cargo"],
+            "Cargo": cargo_atual,
             "Colaboradora": n,
             "Exemplares": qtd_exemplares,
             "SKUs": qtd_skus,
@@ -179,5 +188,3 @@ if uploaded_file:
             for idx, r in df_cargo.iterrows():
                 blocos_email += f"• {r['Colaboradora']}: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | {r['Movimentação Operacional']}\n"
 
-    texto_final = f"Assunto: Relatório de Produtividade e Histórico de Movimentação - Varejo\n\nBoa tarde, Prezados.\n\nSegue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.\n\n**1. Resumo de Produção Geral (Performance Diária)**\n• Total de Exemplares Separados: {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})\n• SKUs Movimentados: {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})\n\n**2. Indicadores de Desempenho Coletivo e Histórico por Função**{blocos_email}\n*Nota: Os remanejamentos de colaboradores ocorreram devido à falta de pedidos no estoque no início da manhã.*\n\nAtenciosamente,"
-    
