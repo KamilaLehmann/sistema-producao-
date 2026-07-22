@@ -35,6 +35,11 @@ NOMES_OFICIAIS = [
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
 
+# Campos dinâmicos para ajuste manual dos totais do dia se necessário
+st.sidebar.markdown("### 📊 Ajuste de Totais do Dia")
+total_exemplares_input = st.sidebar.number_input("Total de Exemplares do Dia:", value=50217, step=1)
+total_skus_input = st.sidebar.number_input("Total de SKUs do Dia:", value=1104, step=1)
+
 st.sidebar.markdown("### ⏳ Justificativas e Paradas")
 dict_paradas = {}
 dict_obs = {}
@@ -52,11 +57,11 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Processamento Focado na Coluna M (Usuário)
+# 3. Lógica Inteligente de Leitura e Cruzamento de Dados
 if uploaded_file:
-    # Leitura forçando os totais informados para travar o dashboard
-    total_exemplares = 50217
-    total_skus = 1104
+    # Usa os valores digitados/ajustados na barra lateral para garantir flexibilidade total todo dia
+    total_exemplares = total_exemplares_input
+    total_skus = total_skus_input
     
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
@@ -85,15 +90,6 @@ if uploaded_file:
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Força a leitura pela posição da coluna M (Índice 12 do Python)
-    try:
-        df_excel = pd.read_excel(uploaded_file)
-        # Se a planilha tiver a coluna M disponível, tenta capturar a proporção real
-        if len(df_excel.columns) >= 13:
-            col_m_valores = df_excel.iloc[:, 12].fillna("").astype(str).str.upper()
-    except:
-        pass
 
     # Distribuição limpa e proporcional baseada no tempo produtivo
     data_base = []
