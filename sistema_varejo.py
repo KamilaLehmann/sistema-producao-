@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import openpyxl
 
 # 1. Configuração e Estilização de Design Premium (HTML / CSS)
@@ -55,30 +54,25 @@ for op in NOMES_OFICIAIS:
 
 # 3. Lógica Avançada: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
-    # Abre o Excel pelo openpyxl para checar quais linhas estão ocultas pelo filtro
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet = wb.active
     
     dados_visiveis = []
     
-    # Percorre as linhas a partir da linha 2 (pulando o cabeçalho)
     for row in range(2, sheet.max_row + 1):
-        # Verifica se a linha NÃO está escondida pelo filtro do Excel
         if sheet.row_dimensions[row].hidden == False:
-            val_i = sheet.cell(row=row, column=9).value   # Coluna I é a 9ª coluna (TOTAL)
-            val_m = sheet.cell(row=row, column=13).value  # Coluna M é a 13ª coluna (USUARIO)
+            val_i = sheet.cell(row=row, column=9).value   # Coluna I (TOTAL)
+            val_m = sheet.cell(row=row, column=13).value  # Coluna M (USUARIO)
             
             if val_i is not None and val_m is not None:
                 dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip()})
                 
-    # Transforma os dados coletados em um DataFrame do Pandas para análise rápida
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
         df_filtrado["TOTAL"] = pd.to_numeric(df_filtrado["TOTAL"], errors='coerce').fillna(0)
         
-        # Totais baseados estritamente na seleção visível do rodapé da imagem
         total_exemplares = int(df_filtrado["TOTAL"].sum())
-        total_skus = int(len(df_filtrado)) # A contagem do Excel reflete o número de linhas filtradas
+        total_skus = int(len(df_filtrado))
     else:
         total_exemplares, total_skus = 50271, 1104
         df_filtrado = pd.DataFrame(columns=["TOTAL", "USUARIO"])
@@ -116,7 +110,6 @@ if uploaded_file:
     data_gerencial = []
     for n in NOMES_OFICIAIS:
         if not df_filtrado.empty:
-            # Encontra registros correspondentes ignorando maiúsculas/minúsculas
             df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
             qtd_exemplares = int(df_func["TOTAL"].sum())
             qtd_skus = int(len(df_func))
@@ -133,27 +126,9 @@ if uploaded_file:
         
     df_real = pd.DataFrame(data_gerencial)
         
-    # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
-    col_graf, col_tab = st.columns([1, 1.3])
-    with col_graf:
-        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📈 Gráfico de Produção</h3>", unsafe_allow_html=True)
-        fig, ax = plt.subplots(figsize=(4.5, 2.3))
-        bars = ax.bar(df_real['Colaboradora'], df_real['Exemplares'], color='#3B82F6', width=0.45)
-        ax.tick_params(axis='both', labelsize=7)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.xticks(rotation=20, ha='right')
-        
-        for bar in bars:
-            yval = bar.get_height()
-            if yval > 0:
-                ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.02), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
-            
-        st.pyplot(fig)
-        
-    with col_tab:
-        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial</h3>", unsafe_allow_html=True)
-        st.dataframe(df_real, use_container_width=True, hide_index=True)
+    # Exibição da Tabela Gerencial em tamanho completo na tela
+    st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
+    st.dataframe(df_real, use_container_width=True, hide_index=True)
 
     # 4. Caixa de Texto Gerada do E-mail Prontinha para Copiar
     st.markdown("<br><hr>", unsafe_allow_html=True)
@@ -183,4 +158,4 @@ Atenciosamente,
     """
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=280)
 else:
-    st.info("👋 Alinhamento com a Coluna I e M concluído. Faça o upload da sua planilha Excel filtrada na barra lateral.")
+    st.info("👋 Alinhamento concluído. Faça o upload da sua planilha Excel filtrada na barra lateral.")
