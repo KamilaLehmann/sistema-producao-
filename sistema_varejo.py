@@ -37,30 +37,28 @@ NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
-# Filtros unificados por caixas de seleção inteligente (multiselect)
+# Filtros gerenciais limpos
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
 remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela e E-mail):", NOMES_LISTA)
-ocultar_saidas = st.sidebar.multiselect("Ocultar Saídas (Deixar atividade normal):", NOMES_LISTA)
 
 st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
+# NOVO: Caixa de texto para digitar o motivo real da ausência/falta
+motivo_ausencia = st.sidebar.text_input("Motivo das Ausências:", value="Falta administrativa / Banco de horas")
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 
 for cargo, integrantes in EQUIPE.items():
-    # Verifica se há algum integrante visível antes de criar o título do cargo
     integrantes_visiveis = [i for i in integrantes if i not in remover_do_setor]
     if integrantes_visiveis:
         st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
         
     for op in integrantes:
         if op in remover_do_setor:
-            continue  # Esconde completamente a pessoa se estiver no filtro de remoção
+            continue
             
         is_ausente = op in faltas_selecionadas
-        is_saida_oculta = op in ocultar_saidas
-        
         label_op = f"👤 {op} (AUSENTE)" if is_ausente else f"**👤 {op}**"
         st.sidebar.markdown(label_op, unsafe_allow_html=True)
         
@@ -68,10 +66,9 @@ for cargo, integrantes in EQUIPE.items():
         st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
         c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
         
-        # Puxa o valor inicial apenas se o funcionário estiver ativo e não tiver saídas ocultadas
-        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente and not is_saida_oculta else ""
-        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente and not is_saida_oculta else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente and not is_saida_oculta else ("07h30" if op == "Rosana Delfino" and not is_ausente and not is_saida_oculta else ""))
-        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente and not is_saida_oculta else ""
+        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
+        init_ret1 = "10h00" if op == "Gabriele" and not is_ausente else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not is_ausente else ("07h30" if op == "Rosana Delfino" and not is_ausente else ""))
+        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not is_ausente else ""
         
         with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
         with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
@@ -132,7 +129,7 @@ if uploaded_file:
     data_gerencial = []
     for n in NOMES_LISTA:
         if n in remover_do_setor:
-            continue  # Filtra para não aparecer na tabela gerencial
+            continue
             
         mov = dict_movimentacao[n]
         is_ausente = n in faltas_selecionadas
@@ -140,7 +137,8 @@ if uploaded_file:
         if is_ausente:
             qtd_exemplares = 0
             qtd_skus = 0
-            justificativa_texto = "Ausente. Justificativa: Falta administrativa."
+            # Integração do motivo de ausência dinâmico digitado por você
+            justificativa_texto = f"Ausente. Motivo: {motivo_ausencia}."
         else:
             if not df_filtrado.empty:
                 df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
@@ -181,3 +179,5 @@ if uploaded_file:
             for idx, r in df_cargo.iterrows():
                 blocos_email += f"• {r['Colaboradora']}: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | {r['Movimentação Operacional']}\n"
 
+    texto_final = f"Assunto: Relatório de Produtividade e Histórico de Movimentação - Varejo\n\nBoa tarde, Prezados.\n\nSegue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.\n\n**1. Resumo de Produção Geral (Performance Diária)**\n• Total de Exemplares Separados: {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})\n• SKUs Movimentados: {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})\n\n**2. Indicadores de Desempenho Coletivo e Histórico por Função**{blocos_email}\n*Nota: Os remanejamentos de colaboradores ocorreram devido à falta de pedidos no estoque no início da manhã.*\n\nAtenciosamente,"
+    
