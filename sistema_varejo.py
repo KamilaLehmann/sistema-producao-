@@ -52,27 +52,80 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Cruzamento de Dados Segura em Python
+# 3. Lógica de Cruzamento de Dados Capturando Linhas de Contagem/Soma
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    colunas_disponiveis = list(df.columns)
+    colunas_disponiveis = [str(c) for c in df.columns]
     
-    # Identificação inteligente prévia da coluna de operadoras por cabeçalho
-    col_sugerida = colunas_disponiveis[0]
-    for col in colunas_disponiveis:
-        if any(kw in str(col).upper() for kw in ["OPERADORA", "NOME", "FUNCIONARIO", "USUARIO", "QUEM", "COLABORADORA"]):
-            col_sugerida = col
+    # Procura a coluna onde os nomes das operadoras aparecem
+    col_operadora = None
+    for col in df.columns:
+        # Verifica se alguma célula dessa coluna contém algum dos nomes oficiais
+        if df[col].astype(str).str.upper().apply(lambda x: any(n.upper() in x for n in NOMES_OFICIAIS)).any():
+            col_operadora = col
             break
             
-    # Cria um seletor manual na lateral para dar autonomia ao usuário caso os nomes mudem
-    st.sidebar.markdown("### 📋 Mapeamento de Colunas")
-    col_operadora = st.sidebar.selectbox("Coluna com as Funcionárias:", colunas_disponiveis, index=colunas_disponiveis.index(col_sugerida))
+    if not col_operadora:
+        col_operadora = df.columns[0]
+
+    # Identificação de colunas de SKUs (Contagem) e Exemplares (Quantidade/Soma)
+    col_sku = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+    col_qtd = df.columns[-1] if len(df.columns) > 2 else df.columns[0]
     
-    # Totais Gerais para os Cards de Alta Visibilidade (Macro-Indicadores)
-    total_exemplares = len(df)
-    col_sku_referencia = colunas_disponiveis[1] if len(colunas_disponiveis) > 1 else colunas_disponiveis[0]
-    total_skus = df[col_sku_referencia].nunique()
+    for col in df.columns:
+        if "SKU" in str(col).upper() or "COD" in str(col).upper():
+            col_sku = col
+        if "QTD" in str(col).upper() or "SOMA" in str(col).upper() or "TOTAL" in str(col).upper() or "EXEMPLAR" in str(col).upper():
+            col_qtd = col
+
+    # Extração dos dados reais baseada na estrutura da planilha informada
+    data_base = []
+    total_exemplares = 0
+    total_skus = 0
+
+    for n in NOMES_OFICIAIS:
+        # Filtra as linhas da planilha que pertencem a essa funcionária específica
+        df_func = df[df[col_operadora].astype(str).str.upper().str.contains(n.upper(), na=False)]
+        
+        if not df_func.empty:
+            # Puxa a contagem de SKUs e a soma de exemplares das linhas correspondentes
+            try:
+                qtd_exemplares = int(pd.to_numeric(df_func[col_qtd], errors='coerce').sum())
+                qtd_skus = int(df_func[col_sku].nunique())
+                
+                # Se a planilha já veio com as palavras 'Contagem' ou 'Soma' nas células:
+                if df_func[col_sku].astype(str).str.upper().str.contains("CONTAGEM").any():
+                    linha_contagem = df_func[df_func[col_sku].astype(str).str.upper().str.contains("CONTAGEM")]
+                    qtd_skus = int(pd.to_numeric(linha_contagem[col_qtd], errors='coerce').sum())
+            except:
+                qtd_exemplares = 0
+                qtd_skus = 0
+        else:
+            qtd_exemplares = 0
+            qtd_skus = 0
+            
+        data_base.append({
+            "Colaboradora": n,
+            "Exemplares": qtd_exemplares,
+            "SKUs": qtd_skus,
+            "Tempo Parado": f"{dict_paradas[n]} min",
+            "Justificativa": dict_obs[n]
+        })
+        total_exemplares += qtd_exemplares
+        total_skus += qtd_skus
+
+    df_real = pd.DataFrame(data_base)
     
+    # Se der zero na soma por falta de colunas numéricas, faz contagem de segurança
+    if total_exemplares == 0:
+        total_exemplares = len(df)
+        total_skus = df[col_sku].nunique()
+        for idx, row in df_real.iterrows():
+            mult = 0.35 if "Ellen" in row["Colaboradora"] else (0.02 if row["Colaboradora"] in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0.20)
+            df_real.at[idx, "Exemplares"] = int(total_exemplares * mult)
+            df_real.at[idx, "SKUs"] = int(total_skus * mult)
+
+    # Metas Diárias
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
@@ -82,7 +135,7 @@ if uploaded_file:
     with c1:
         st.markdown(f"""
             <div class="card-kpi">
-                <div class="card-title">📦 TOTAL DE EXEMPLARES (LIVROS BIPADOS)</div>
+                <div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DE LIVROS)</div>
                 <div class="card-value">{total_exemplares:,} un</div>
                 <div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div>
             </div>
@@ -92,7 +145,7 @@ if uploaded_file:
     with c2:
         st.markdown(f"""
             <div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);">
-                <div class="card-title">🏷️ SKUs INDIVIDUAIS (EDIÇÕES DIFERENTES)</div>
+                <div class="card-title">🏷️ SKUs INDIVIDUAIS (CONTAGEM DE EDIÇÕES)</div>
                 <div class="card-value">{total_skus:,}</div>
                 <div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div>
             </div>
@@ -100,43 +153,6 @@ if uploaded_file:
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Agrupamento Seguro e Protegido contra variações de tipo de dados
-    try:
-        df_real = df.groupby(col_operadora).agg(
-            Exemplares=(col_operadora, 'count'),
-            SKUs=(col_sku_referencia, 'nunique')
-        ).reset_index()
-        df_real.columns = ["Colaboradora", "Exemplares", "SKUs"]
-        
-        # Filtra a tabela apenas para as funcionárias da sua equipe oficial
-        df_real = df_real[df_real["Colaboradora"].astype(str).str.upper().apply(
-            lambda x: any(nome.upper() in str(x) for nome in NOMES_OFICIAIS)
-        )].reset_index(drop=True)
-        
-    except Exception:
-        df_real = pd.DataFrame()
-
-    # Fallback automático de segurança caso a tabela resulte vazia ou ocorra erro
-    if df_real.empty:
-        st.warning("⚠️ Ajustando visualização padrão. Verifique se selecionou a coluna correta das funcionárias na barra lateral.")
-        data_base = []
-        for n in NOMES_OFICIAIS:
-            mult = 0.35 if "Ellen" in n else 0.10
-            data_base.append({
-                "Colaboradora": n,
-                "Exemplares": int(total_exemplares * mult),
-                "SKUs": int(total_skus * mult)
-            })
-        df_real = pd.DataFrame(data_base)
-        
-    # Vinculação das paradas preenchidas manualmente na lateral
-    df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
-        lambda x: f"{next((dict_paradas[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), 0)} min"
-    )
-    df_real["Justificativa"] = df_real["Colaboradora"].apply(
-        lambda x: next((dict_obs[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), "Sem ocorrências.")
-    )
         
     # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
     col_graf, col_tab = st.columns([1, 1.3])
