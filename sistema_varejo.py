@@ -35,35 +35,44 @@ NOMES_OFICIAIS = [
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
 
-# CONTROLE DEFINITIVO: Você digita aqui os totais reais do dia
-st.sidebar.markdown("### 📊 Digite os Totais Reais do Dia")
-total_skus = st.sidebar.number_input("Quantidade Real de SKUs:", value=1104, step=1)
-total_exemplares = st.sidebar.number_input("Quantidade Real de Exemplares:", value=50217, step=1)
+# Totais Gerais informados por você para travar as metas corretas
+st.sidebar.markdown("### 📊 Totais Gerais do Dia")
+total_exemplares = st.sidebar.number_input("Total de Exemplares do Dia:", value=50217, step=1)
+total_skus = st.sidebar.number_input("Total de SKUs do Dia:", value=1104, step=1)
 
-st.sidebar.markdown("### ⏳ Justificativas e Paradas")
-dict_paradas = {}
-dict_obs = {}
+st.sidebar.markdown("### ⏳ Produção e Ocorrências Individuais")
+dict_dados = {}
 
+# Laço para criar campos específicos e independentes para cada menina
 for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
-    col_p, col_o = st.sidebar.columns(2)
     
+    # Valores iniciais de teste sugeridos
+    init_ex = 25000 if "Ellen" in op else (1000 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 7400)
+    init_sku = 500 if "Ellen" in op else (20 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 180)
     default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
     default_obs = "Retornou às 07h30 do setor loja." if "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else "Sem ocorrências.")
     
-    with col_p:
-        dict_paradas[op] = st.number_input("Min:", value=default_min, key=f"p_{op}", step=5, label_visibility="collapsed")
-    with col_o:
-        dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
+    c_ex, c_sk, c_pa, c_ob = st.sidebar.columns([1, 1, 1, 2])
+    with c_ex:
+        ex_val = st.number_input("Exemplares:", value=init_ex, key=f"ex_{op}", step=50, label_visibility="collapsed")
+    with c_sk:
+        sku_val = st.number_input("SKUs:", value=init_sku, key=f"sk_{op}", step=10, label_visibility="collapsed")
+    with c_pa:
+        pa_val = st.number_input("Parada:", value=default_min, key=f"pa_{op}", step=5, label_visibility="collapsed")
+    with c_ob:
+        ob_val = st.text_input("Justificativa:", value=default_obs, key=f"ob_{op}", label_visibility="collapsed")
+        
+    dict_dados[op] = {"Exemplares": ex_val, "SKUs": sku_val, "Parada": pa_val, "Obs": ob_val}
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Exibição dos Indicadores Baseados nos Seus Inputs
+# 3. Exibição dos Indicadores na Tela
 if uploaded_file:
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards HTML de Alta Visibilidade
+    # Renderização dos Cards HTML de Alta Visibilidade (Macro-Indicadores)
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -87,24 +96,15 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Distribuição limpa e proporcional baseada no tempo ativo de produção
+    # Cria a tabela oficial com os valores exatos que você digitou na barra lateral
     data_base = []
     for n in NOMES_OFICIAIS:
-        if "Ellen" in n:
-            mult = 0.54
-        elif n in ["Beatriz Mascarenhas", "Alisson Lima", "Kamila Moraes"]:
-            mult = 0.14
-        elif n in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"]:
-            mult = 0.04
-        else:
-            mult = 0.00
-            
         data_base.append({
             "Colaboradora": n,
-            "Exemplares": int(total_exemplares * mult),
-            "SKUs": int(total_skus * mult),
-            "Tempo Parado": f"{dict_paradas[n]} min",
-            "Justificativa": dict_obs[n]
+            "Exemplares": dict_dados[n]["Exemplares"],
+            "SKUs": dict_dados[n]["SKUs"],
+            "Tempo Parado": f"{dict_dados[n]['Parada']} min",
+            "Justificativa": dict_dados[n]["Obs"]
         })
         
     df_real = pd.DataFrame(data_base)
@@ -122,7 +122,8 @@ if uploaded_file:
         
         for bar in bars:
             yval = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.01), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
+            if yval > 0:
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.01), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
             
         st.pyplot(fig)
         
