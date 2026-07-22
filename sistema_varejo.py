@@ -37,7 +37,7 @@ NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
-# MELHORIA: Filtros unificados por caixas de seleção inteligente (multiselect)
+# Filtros unificados por caixas de seleção inteligente (multiselect)
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
 remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela e E-mail):", NOMES_LISTA)
 ocultar_saidas = st.sidebar.multiselect("Ocultar Saídas (Deixar atividade normal):", NOMES_LISTA)
@@ -177,16 +177,7 @@ if uploaded_file:
     for cargo_tipo in ["Líder", "Apoio", "Operadoras"]:
         df_cargo = df_real[df_real["Cargo"] == cargo_tipo]
         if not df_cargo.empty:
-            blocos_email += f"\\n**{cargo_tipo}:**\\n"
+            blocos_email += "\n" + f"**{cargo_tipo}:**" + "\n"
             for idx, r in df_cargo.iterrows():
-                blocos_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | *{r['Movimentação Operacional']}*\\n"
+                blocos_email += f"• {r['Colaboradora']}: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | {r['Movimentação Operacional']}\n"
 
-    texto_final = f"""
-**Assunto:** Relatório de Produtividade e Histórico de Movimentação - Varejo
-
-Boa tarde, Prezados.
-
-Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado das justificativas de movimentações internas da equipe.
-
-**1. Resumo de Produção Geral (Performance Diária)**
-• **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
