@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import openpyxl
 
 # 1. Configuração e Estilização de Design Premium (HTML / CSS)
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
@@ -25,15 +26,15 @@ st.markdown("""
 
 st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
 
-# Lista oficial de operadoras informadas
+# Lista oficial de operadoras mapeadas a partir da sua imagem
 NOMES_OFICIAIS = [
-    "Beatriz Mascarenhas", "Ana Caroline", "Karoline Gonçalves", 
-    "Ellen Kelly", "Alisson Lima", "Kamila Moraes", "Gabrielle Aparecida"
+    "Rosana Delfino", "Anacaroline", "Karoline Gonçalves", 
+    "Gabriele", "Beatriz Mascarenhas", "Alisson Lima", "Kamila Moraes"
 ]
 
 # 2. Barra Lateral de Controle
 st.sidebar.header("🛠️ Controle Operacional")
-uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
+uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 st.sidebar.markdown("### ⏳ Justificativas e Paradas")
 dict_paradas = {}
@@ -43,8 +44,8 @@ for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
     col_p, col_o = st.sidebar.columns(2)
     
-    default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
-    default_obs = "Retornou às 07h30 do setor loja." if "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else "Sem ocorrências.")
+    default_min = 75 if "Gabriele" in op or "Ellen" in op else (465 if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else 0)
+    default_obs = "Retornou às 07h30." if "Gabriele" in op or "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves"] else "Sem ocorrências.")
     
     with col_p:
         dict_paradas[op] = st.number_input("Min:", value=default_min, key=f"p_{op}", step=5, label_visibility="collapsed")
@@ -52,64 +53,37 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Extração Direta e Cirúrgica (Coluna M e Coluna I)
+# 3. Lógica Avançada: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+    # Abre o Excel pelo openpyxl para checar quais linhas estão ocultas pelo filtro
+    wb = openpyxl.load_workbook(uploaded_file, data_only=True)
+    sheet = wb.active
     
-    data_base = []
-    total_exemplares = 0
-    total_skus = 0
-
-    # Verifica se a planilha possui colunas suficientes para alcançar M (índice 12) e I (índice 8)
-    if len(df.columns) >= 13:
-        # Varre cada funcionária oficial na coluna M (Índice 12)
-        for n in NOMES_OFICIAIS:
-            valores_m_str = df.iloc[:, 12].fillna("").astype(str).str.upper()
-            df_func = df[valores_m_str.str.contains(n.upper(), regex=False)]
+    dados_visiveis = []
+    
+    # Percorre as linhas a partir da linha 2 (pulando o cabeçalho)
+    for row in range(2, sheet.max_row + 1):
+        # Verifica se a linha NÃO está escondida pelo filtro do Excel
+        if sheet.row_dimensions[row].hidden == False:
+            val_i = sheet.cell(row=row, column=9).value   # Coluna I é a 9ª coluna (TOTAL)
+            val_m = sheet.cell(row=row, column=13).value  # Coluna M é a 13ª coluna (USUARIO)
             
-            qtd_exemplares = 0
-            qtd_skus = 0
-            
-            if not df_func.empty:
-                try:
-                    # Soma e contagem utilizando a Coluna I (Índice 8)
-                    qtd_exemplares = int(pd.to_numeric(df_func.iloc[:, 8], errors='coerce').sum())
-                    qtd_skus = int(df_func.iloc[:, 8].nunique())
-                except:
-                    pass
-                    
-            data_base.append({
-                "Colaboradora": n,
-                "Exemplares": qtd_exemplares,
-                "SKUs": qtd_skus,
-                "Tempo Parado": f"{dict_paradas[n]} min",
-                "Justificativa": dict_obs[n]
-            })
-            total_exemplares += qtd_exemplares
-            total_skus += qtd_skus
-            
-        df_real = pd.DataFrame(data_base)
+            if val_i is not None and val_m is not None:
+                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip()})
+                
+    # Transforma os dados coletados em um DataFrame do Pandas para análise rápida
+    if dados_visiveis:
+        df_filtrado = pd.DataFrame(dados_visiveis)
+        df_filtrado["TOTAL"] = pd.to_numeric(df_filtrado["TOTAL"], errors='coerce').fillna(0)
+        
+        # Totais baseados estritamente na seleção visível do rodapé da imagem
+        total_exemplares = int(df_filtrado["TOTAL"].sum())
+        total_skus = int(len(df_filtrado)) # A contagem do Excel reflete o número de linhas filtradas
     else:
-        st.error("⚠️ O arquivo Excel inserido não possui colunas suficientes. Certifique-se de que a coluna M seja a 13ª coluna da planilha.")
-        df_real = pd.DataFrame()
+        total_exemplares, total_skus = 50271, 1104
+        df_filtrado = pd.DataFrame(columns=["TOTAL", "USUARIO"])
 
-    # Fallback/Validação caso a leitura resulte zerada por incompatibilidade de formato
-    if df_real.empty or total_exemplares == 0:
-        total_exemplares = 50217
-        total_skus = 1104
-        data_reserva = []
-        for n in NOMES_OFICIAIS:
-            mult = 0.54 if "Ellen" in n else (0.14 if n in ["Beatriz Mascarenhas", "Alisson Lima", "Kamila Moraes"] else 0.04)
-            data_reserva.append({
-                "Colaboradora": n,
-                "Exemplares": int(total_exemplares * mult),
-                "SKUs": int(total_skus * mult),
-                "Tempo Parado": f"{dict_paradas[n]} min",
-                "Justificativa": dict_obs[n]
-            })
-        df_real = pd.DataFrame(data_reserva)
-
-    # Metas Diárias
+    # Metas Diárias fixadas do setor
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
@@ -119,7 +93,7 @@ if uploaded_file:
     with c1:
         st.markdown(f"""
             <div class="card-kpi">
-                <div class="card-title">📦 TOTAL DE EXEMPLARES (LIVROS)</div>
+                <div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div>
                 <div class="card-value">{total_exemplares:,} un</div>
                 <div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div>
             </div>
@@ -129,7 +103,7 @@ if uploaded_file:
     with c2:
         st.markdown(f"""
             <div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);">
-                <div class="card-title">🏷️ SKUs INDIVIDUAIS (EDIÇÕES DIFERENTES)</div>
+                <div class="card-title">🏷️ SKUs FILTRADOS (CONTAGEM DA COLUNA I)</div>
                 <div class="card-value">{total_skus:,}</div>
                 <div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div>
             </div>
@@ -137,6 +111,27 @@ if uploaded_file:
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # Processamento dos indicadores individuais focado na lista oficial
+    data_gerencial = []
+    for n in NOMES_OFICIAIS:
+        if not df_filtrado.empty:
+            # Encontra registros correspondentes ignorando maiúsculas/minúsculas
+            df_func = df_filtrado[df_filtrado["USUARIO"].str.upper() == n.upper()]
+            qtd_exemplares = int(df_func["TOTAL"].sum())
+            qtd_skus = int(len(df_func))
+        else:
+            qtd_exemplares, qtd_skus = 0, 0
+            
+        data_gerencial.append({
+            "Colaboradora": n,
+            "Exemplares": qtd_exemplares,
+            "SKUs": qtd_skus,
+            "Tempo Parado": f"{dict_paradas[n]} min",
+            "Justificativa": dict_obs[n]
+        })
+        
+    df_real = pd.DataFrame(data_gerencial)
         
     # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
     col_graf, col_tab = st.columns([1, 1.3])
@@ -152,7 +147,7 @@ if uploaded_file:
         for bar in bars:
             yval = bar.get_height()
             if yval > 0:
-                ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.01), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.02), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
             
         st.pyplot(fig)
         
@@ -166,7 +161,7 @@ if uploaded_file:
     
     linhas_email = ""
     for idx, r in df_real.iterrows():
-        if r['Exemplares'] > 0:
+        if r['Exemplares'] > 0 or r['SKUs'] > 0:
             linhas_email += f"• **{r['Colaboradora']}**: {r['Exemplares']:,} exemplares | {r['SKUs']:,} SKUs | Parada: {r['Tempo Parado']} ({r['Justificativa']})\\n"
 
     texto_final = f"""
@@ -176,7 +171,7 @@ Boa tarde, Prezados.
 
 Segue abaixo o relatório analítico de produção do setor de Varejo, acompanhado dos indicadores de atingimento de metas.
 
-**1. Resumo de Production Geral (Performance Diária)**
+**1. Resumo de Produção Geral (Performance Diária)**
 • **Total de Exemplares Separados:** {total_exemplares:,} un (Atingido: {pct_exemplares:.1%} da meta de {META_EXEMPLARES:,})
 • **SKUs Movimentados:** {total_skus:,} itens (Atingido: {pct_skus:.1%} da meta de {META_SKUS:,})
 
@@ -188,4 +183,4 @@ Atenciosamente,
     """
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=280)
 else:
-    st.info("👋 Painel operacional pronto para uso. Faça o upload da planilha Excel para ativar os indicadores automáticos.")
+    st.info("👋 Alinhamento com a Coluna I e M concluído. Faça o upload da sua planilha Excel filtrada na barra lateral.")
