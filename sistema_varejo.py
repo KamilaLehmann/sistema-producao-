@@ -10,20 +10,20 @@ st.markdown("""
     .card-kpi {
         background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
-        padding: 25px;
-        border-radius: 16px;
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        padding: 18px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
         text-align: center;
         margin-bottom: 12px;
     }
-    .card-title { font-size: 1.2rem; font-weight: 700; opacity: 0.95; margin-bottom: 8px; letter-spacing: 0.5px; }
-    .card-value { font-size: 3.6rem; font-weight: 900; line-height: 1; margin-bottom: 10px; color: #FFFFFF; }
-    .card-sub { font-size: 1rem; opacity: 0.9; font-weight: 600; }
-    div.stProgress > div > div > div { background-color: #10B981; height: 10px; }
+    .card-title { font-size: 1rem; font-weight: 700; opacity: 0.95; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .card-value { font-size: 2.2rem; font-weight: 800; line-height: 1; margin-bottom: 6px; color: #FFFFFF; }
+    .card-sub { font-size: 0.85rem; opacity: 0.9; font-weight: 600; }
+    div.stProgress > div > div > div { background-color: #10B981; height: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Production - Varejo</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
 
 # Organização da equipe por cargos oficiais
 EQUIPE = {
@@ -42,20 +42,28 @@ st.sidebar.markdown("### 👁️ Filtro de Exibição (E-mail e Tabela)")
 exibir_kamila = st.sidebar.checkbox("Exibir Kamila Moraes (Líder)", value=True)
 exibir_alisson = st.sidebar.checkbox("Exibir Alisson Lima (Apoio)", value=True)
 
+# NOVO: Seção de Ausências e Faltas na Barra Lateral
+st.sidebar.markdown("### ❌ Ausências do Dia (Marque se faltou)")
+dict_faltas = {}
+for op in NOMES_LISTA:
+    dict_faltas[op] = st.sidebar.checkbox(f"Falta: {op}", value=False, key=f"falta_{op}")
+
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 dict_movimentacao = {}
 
 for cargo, integrantes in EQUIPE.items():
     st.sidebar.markdown(f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>", unsafe_allow_html=True)
     for op in integrantes:
-        st.sidebar.markdown(f"**👤 {op}**")
+        # Se a pessoa faltou, desabilita visualmente ou avisa na barra lateral
+        label_op = f"👤 {op} (AUSENTE)" if dict_faltas[op] else f"**👤 {op}**"
+        st.sidebar.markdown(label_op, unsafe_allow_html=True)
         
         # Primeira Saída
         st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
         c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
-        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
-        init_ret1 = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
-        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+        init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not dict_faltas[op] else ""
+        init_ret1 = "10h00" if op == "Gabriele" and not dict_faltas[op] else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] and not dict_faltas[op] else ("07h30" if op == "Rosana Delfino" and not dict_faltas[op] else ""))
+        init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] and not dict_faltas[op] else ""
         
         with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
         with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
@@ -102,6 +110,7 @@ if uploaded_file:
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
+    # Renderização dos Cards com Fontes Menores Otimizadas
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES (SOMA DA COLUNA I)</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
@@ -118,22 +127,28 @@ if uploaded_file:
         if n == "Kamila Moraes" and not exibir_kamila: continue
         if n == "Alisson Lima" and not exibir_alisson: continue
             
-        if not df_filtrado.empty:
-            df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
-            qtd_exemplares = int(df_func["TOTAL"].sum())
-            qtd_skus = int(len(df_func))
-        else:
-            qtd_exemplares, qtd_skus = 0, 0
-            
         mov = dict_movimentacao[n]
-        historico_justificativas = []
         
-        if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
-            historico_justificativas.append(f"Encaminhada ao {mov['loc1']} das {mov['sai1']} às {mov['ret1']}")
-        if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
-            historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
-            
-        justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
+        # Se estiver marcado como falta, zera e altera a justificativa
+        if dict_faltas[n]:
+            qtd_exemplares = 0
+            qtd_skus = 0
+            justificativa_texto = "Ausente. Justificativa: Falta administrativa."
+        else:
+            if not df_filtrado.empty:
+                df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
+                qtd_exemplares = int(df_func["TOTAL"].sum())
+                qtd_skus = int(len(df_func))
+            else:
+                qtd_exemplares, qtd_skus = 0, 0
+                
+            historico_justificativas = []
+            if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
+                historico_justificativas.append(f"Encaminhada ao {mov['loc1']} das {mov['sai1']} às {mov['ret1']}")
+            if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
+                historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
+                
+            justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             
         data_gerencial.append({
             "Cargo": mov["cargo"],
@@ -176,6 +191,3 @@ Segue abaixo o relatório analítico de produção do setor de Varejo, acompanha
 
 Atenciosamente,
     """
-    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final.strip(), height=320)
-else:
-    st.info("👋 Retornado ao design executivo anterior com sucesso. Faça o upload da sua planilha Excel na barra lateral.")
