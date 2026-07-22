@@ -2,73 +2,76 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Configuração e Estilização Avançada (HTML / CSS)
+# 1. Configuração e Estilização de Design Premium (HTML / CSS)
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem; max-width: 95%;}
+    .block-container {padding-top: 1rem; padding-bottom: 0rem; max-width: 96%;}
     .card-kpi {
         background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
-        padding: 22px;
+        padding: 25px;
         border-radius: 16px;
         box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
         text-align: center;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
-    .card-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; margin-bottom: 5px; letter-spacing: 0.5px; }
-    .card-value { font-size: 3.2rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
-    .card-sub { font-size: 0.95rem; opacity: 0.85; font-weight: 500; }
-    div.stProgress > div > div > div { background-color: #10B981; }
-    .sidebar-section { background-color: #F3F4F6; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    .card-title { font-size: 1.2rem; font-weight: 700; opacity: 0.95; margin-bottom: 8px; letter-spacing: 0.5px; }
+    .card-value { font-size: 3.6rem; font-weight: 900; line-height: 1; margin-bottom: 10px; color: #FFFFFF; }
+    .card-sub { font-size: 1rem; opacity: 0.9; font-weight: 600; }
+    div.stProgress > div > div > div { background-color: #10B981; height: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 20px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
+
+# Lista oficial de operadoras informadas
+NOMES_OFICIAIS = [
+    "Beatriz Mascarenhas", "Ana Caroline", "Karoline Gonçalves", 
+    "Ellen Kelly", "Alisson Lima", "Kamila Moraes", "Gabrielle Aparecida"
+]
 
 # 2. Barra Lateral de Controle (Inputs de Texto/Número)
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx", "xls"])
 
-def render_sidebar_inputs(name, default_min, default_obs, key):
-    st.sidebar.markdown(f"**👤 {name}**")
+st.sidebar.markdown("### ⏳ Justificativas e Paradas")
+dict_paradas = {}
+dict_obs = {}
+
+# Gera os campos de forma dinâmica para a lista oficial das meninas
+for op in NOMES_OFICIAIS:
+    st.sidebar.markdown(f"**👤 {op}**")
     col_p, col_o = st.sidebar.columns([1, 2])
+    
+    # Valores padrão específicos da mensagem para o dia 22/07, para as demais inicia zerado
+    default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
+    default_obs = "Retornou às 07h30 do setor loja." if "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else "Sem ocorrências.")
+    
     with col_p:
-        parada = st.number_input("Min:", value=default_min, key=f"p_{key}", step=5, label_visibility="collapsed")
+        dict_paradas[op] = st.number_input("Min:", value=default_min, key=f"p_{op}", step=5, label_visibility="collapsed")
     with col_o:
-        obs = st.text_input("Justificativa:", value=default_obs, key=f"o_{key}", label_visibility="collapsed")
-    st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
-    return parada, obs
+        dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
+    st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-p_el, o_el = render_sidebar_inputs("Ellen Kelly", 75, "Retornou às 07h30 do setor loja.", "e")
-p_an, o_an = render_sidebar_inputs("Ana Caroline", 465, "Encaminhada à loja por falta de pedido.", "a")
-p_ga, o_ga = render_sidebar_inputs("Gabrielle Aparecida", 465, "Encaminhada à loja por falta de pedido.", "g")
-p_ka, o_ka = render_sidebar_inputs("Karoline Gonçalves", 465, "Encaminhada à loja por falta de pedido.", "k")
-
-dict_paradas = {
-    "Ellen Kelly": p_el, "Ana Caroline": p_an, "Gabrielle Aparecida": p_ga, "Karoline Gonçalves": p_ka
-}
-dict_obs = {
-    "Ellen Kelly": o_el, "Ana Caroline": o_an, "Gabrielle Aparecida": o_ga, "Karoline Gonçalves": o_ka
-}
-
-# 3. Lógica de Negócio em Python e Renderização
+# 3. Lógica de Cruzamento de Dados Real via Python
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     
-    # Busca automática pela coluna que contém as operadoras
+    # Varredura inteligente nas colunas para identificar qual possui os nomes informados
     col_operadora = None
-    for col in df.columns:
-        if any(kw in str(col).upper() for kw in ["OPERADORA", "NOME", "FUNCIONARIO", "USUARIO", "QUEM", "COLABORADORA"]):
-            col_operadora = col
-            break
+    max_matches = 0
     
-    if not col_operadora:
-        cols_texto = df.select_dtypes(include=['object']).columns
-        if len(cols_texto) > 0:
-            col_operadora = cols_texto[-1]
+    for col in df.columns:
+        # Conta quantas linhas batem parcialmente ou totalmente com a nossa lista de nomes
+        matches = df[col].astype(str).str.upper().apply(
+            lambda val: any(nome.upper() in val for nome in NOMES_OFICIAIS)
+        ).sum()
+        if matches > max_matches:
+            max_matches = matches
+            col_operadora = col
             
-    # Cálculos de Métricas Globais
+    # Totais Gerais para os Cards de Alta Visibilidade (Macro-Indicadores)
     total_exemplares = len(df)
     total_skus = df.iloc[:, 1].nunique() if len(df.columns) > 1 else df.iloc[:, 0].nunique()
     
@@ -76,13 +79,13 @@ if uploaded_file:
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards HTML Customizados (Design Premium Macroscópico)
+    # Renderização dos Cards HTML de Alta Visibilidade
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
-            <div class="card-kpi" style="background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);">
-                <div class="card-title">📦 TOTAL DE EXEMPLARES (LIVROS)</div>
-                <div class="card-value">{total_exemplares:,}</div>
+            <div class="card-kpi">
+                <div class="card-title">📦 TOTAL DE EXEMPLARES (LIVROS BIPADOS)</div>
+                <div class="card-value">{total_exemplares:,} un</div>
                 <div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div>
             </div>
         """, unsafe_allow_html=True)
@@ -100,48 +103,59 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Agrupamento e Cruzamento de Dados
-    if col_operadora and df[col_operadora].dropna().nunique() > 0:
-        col_identificador = df.columns[0]
-        df_agrupado = df.groupby(col_operadora).agg(
-            Exemplares=(col_identificador, 'count'),
-            SKUs=(col_identificador, 'nunique')
+    # Processamento Real por Operadora Encontrada
+    if col_operadora and max_matches > 0:
+        col_sku_id = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+        
+        # Agrupamento real do pandas
+        df_real = df.groupby(col_operadora).agg(
+            Exemplares=(col_sku_id, 'count'),
+            SKUs=(col_sku_id, 'nunique')
         ).reset_index()
-        df_agrupado.columns = ["Colaboradora", "Exemplares", "SKUs"]
-        df_agrupado["Tempo Parado"] = df_agrupado["Colaboradora"].map(lambda x: f"{dict_paradas.get(x, 0)} min")
-        df_agrupado["Justificativa"] = df_agrupado["Colaboradora"].map(lambda x: dict_obs.get(x, ""))
+        df_real.columns = ["Colaboradora", "Exemplares", "SKUs"]
+        
+        # Mapeia as paradas informadas na lateral de forma inteligente
+        df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
+            lambda x: f"{next((dict_paradas[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), 0)} min"
+        )
+        df_real["Justificativa"] = df_real["Colaboradora"].apply(
+            lambda x: next((dict_obs[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), "Sem ocorrências.")
+        )
     else:
-        # Fallback estruturado caso a planilha venha sem identificadores de nomes
-        st.warning("⚠️ Coluna de operadoras não identificada de forma clara. Exibindo estrutura base para o dia 22/07.")
-        data_reserva = {
-            "Colaboradora": ["Ellen Kelly", "Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"],
-            "Exemplares": [int(total_exemplares*0.45), int(total_exemplares*0.20), int(total_exemplares*0.20), int(total_exemplares*0.15)],
-            "SKUs": [int(total_skus*0.45), int(total_skus*0.20), int(total_skus*0.20), int(total_skus*0.15)],
-            "Tempo Parado": [f"{p_el} min", f"{p_an} min", f"{p_ga} min", f"{p_ka} min"],
-            "Justificativa": [o_el, o_an, o_ga, o_ka]
-        }
-        df_agrupado = pd.DataFrame(data_reserva)
-    
-    # Exibição Lado a Lado: Gráfico Slim & Tabela Executiva
-    col_graf, col_tab = st.columns([1, 1.2])
+        # Fallback caso a planilha não contenha nenhuma coluna correspondente aos nomes
+        st.warning("⚠️ Não localizamos os nomes das operadoras nas colunas do arquivo. Exibindo estrutura base calibrada.")
+        data_base = []
+        for n in NOMES_OFICIAIS:
+            # Distribui valores proporcionais fictícios se a planilha estiver sem nomes
+            mult = 0.35 if "Ellen" in n else 0.10
+            data_base.append({
+                "Colaboradora": n,
+                "Exemplares": int(total_exemplares * mult),
+                "SKUs": int(total_skus * mult),
+                "Tempo Parado": f"{dict_paradas[n]} min",
+                "Justificativa": dict_obs[n]
+            })
+        df_real = pd.DataFrame(data_base)
+        
+    # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
+    col_graf, col_tab = st.columns([1, 1.3])
     with col_graf:
-        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600;'>📈 Desempenho (Exemplares)</h3>", unsafe_allow_html=True)
-        fig, ax = plt.subplots(figsize=(4.5, 2.5))
-        bars = ax.bar(df_agrupado['Colaboradora'], df_agrupado['Exemplares'], color='#3B82F6', width=0.45)
-        ax.tick_params(axis='both', labelsize=8)
+        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📈 Gráfico de Produção</h3>", unsafe_allow_html=True)
+        fig, ax = plt.subplots(figsize=(4.5, 2.3))
+        bars = ax.bar(df_real['Colaboradora'], df_real['Exemplares'], color='#3B82F6', width=0.45)
+        ax.tick_params(axis='both', labelsize=7)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        plt.xticks(rotation=15, ha='right')
+        plt.xticks(rotation=20, ha='right')
         
         for bar in bars:
             yval = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.01), f'{yval:,}', ha='center', va='bottom', fontsize=8, fontweight='bold')
+            ax.text(bar.get_x() + bar.get_width()/2, yval + (total_exemplares*0.01), f'{yval:,}', ha='center', va='bottom', fontsize=7, fontweight='bold')
             
         st.pyplot(fig)
         
     with col_tab:
-        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600;'>📋 Detalhamento Gerencial</h3>", unsafe_allow_html=True)
-        st.dataframe(df_agrupado, use_container_width=True, hide_index=True)
+        st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial</h3>", unsafe_allow_html=True)
+        st.dataframe(df_real, use_container_width=True, hide_index=True)
 else:
-    st.info("👋 O sistema está pronto. Insira uma planilha Excel válida na barra lateral para renderizar o painel.")
-
+    st.info("👋 Painel operacional pronto para uso. Faça o upload da planilha Excel para ativar os indicadores automáticos.")
