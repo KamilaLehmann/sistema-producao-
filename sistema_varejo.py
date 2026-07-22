@@ -41,7 +41,8 @@ dict_obs = {}
 
 for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
-    col_p, col_o = st.sidebar.columns()
+    # CORREÇÃO CRÍTICA: Adicionado o número 2 dentro de columns()
+    col_p, col_o = st.sidebar.columns(2)
     
     default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
     default_obs = "Retornou às 07h30 do setor loja." if "Ellen" in op else ("Encaminhada à loja por falta de pedido." if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else "Sem ocorrências.")
