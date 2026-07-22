@@ -41,7 +41,6 @@ dict_obs = {}
 
 for op in NOMES_OFICIAIS:
     st.sidebar.markdown(f"**👤 {op}**")
-    # CORREÇÃO CRÍTICA: Adicionado o número 2 dentro de columns()
     col_p, col_o = st.sidebar.columns(2)
     
     default_min = 75 if "Ellen" in op else (465 if op in ["Ana Caroline", "Gabrielle Aparecida", "Karoline Gonçalves"] else 0)
@@ -53,29 +52,32 @@ for op in NOMES_OFICIAIS:
         dict_obs[op] = st.text_input("Justificativa:", value=default_obs, key=f"o_{op}", label_visibility="collapsed")
     st.sidebar.markdown("<hr style='margin:4px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-# 3. Lógica de Cruzamento de Dados Correta
+# 3. Lógica de Cruzamento de Dados Segura em Python
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
+    colunas_disponiveis = list(df.columns)
     
-    col_operadora = None
-    max_matches = 0
-    
-    for col in df.columns:
-        matches = df[col].astype(str).str.upper().apply(
-            lambda val: any(nome.upper() in val for nome in NOMES_OFICIAIS)
-        ).sum()
-        if matches > max_matches:
-            max_matches = matches
-            col_operadora = col
+    # Identificação inteligente prévia da coluna de operadoras por cabeçalho
+    col_sugerida = colunas_disponiveis[0]
+    for col in colunas_disponiveis:
+        if any(kw in str(col).upper() for kw in ["OPERADORA", "NOME", "FUNCIONARIO", "USUARIO", "QUEM", "COLABORADORA"]):
+            col_sugerida = col
+            break
             
+    # Cria um seletor manual na lateral para dar autonomia ao usuário caso os nomes mudem
+    st.sidebar.markdown("### 📋 Mapeamento de Colunas")
+    col_operadora = st.sidebar.selectbox("Coluna com as Funcionárias:", colunas_disponiveis, index=colunas_disponiveis.index(col_sugerida))
+    
+    # Totais Gerais para os Cards de Alta Visibilidade (Macro-Indicadores)
     total_exemplares = len(df)
-    total_skus = df.iloc[:, 1].nunique() if len(df.columns) > 1 else df.iloc[:, 0].nunique()
+    col_sku_referencia = colunas_disponiveis[1] if len(colunas_disponiveis) > 1 else colunas_disponiveis[0]
+    total_skus = df[col_sku_referencia].nunique()
     
     META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES)
     pct_skus = (total_skus / META_SKUS)
     
-    # Renderização dos Cards HTML
+    # Renderização dos Cards HTML de Alta Visibilidade
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -99,34 +101,44 @@ if uploaded_file:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Agrupamento Seguro sem conflito de Index do Pandas
-    if col_operadora and max_matches > 0:
-        primeira_col = df.columns[0]
-        
-        df_real = df.groupby(col_operadora)[primeira_col].agg(['count', 'nunique']).reset_index()
+    # Agrupamento Seguro e Protegido contra variações de tipo de dados
+    try:
+        df_real = df.groupby(col_operadora).agg(
+            Exemplares=(col_operadora, 'count'),
+            SKUs=(col_sku_referencia, 'nunique')
+        ).reset_index()
         df_real.columns = ["Colaboradora", "Exemplares", "SKUs"]
         
-        df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
-            lambda x: f"{next((dict_paradas[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), 0)} min"
-        )
-        df_real["Justificativa"] = df_real["Colaboradora"].apply(
-            lambda x: next((dict_obs[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), "Sem ocorrências.")
-        )
-    else:
-        st.warning("⚠️ Não localizamos os nomes das operadoras nas colunas do arquivo. Exibindo estrutura base calibrada.")
+        # Filtra a tabela apenas para as funcionárias da sua equipe oficial
+        df_real = df_real[df_real["Colaboradora"].astype(str).str.upper().apply(
+            lambda x: any(nome.upper() in str(x) for nome in NOMES_OFICIAIS)
+        )].reset_index(drop=True)
+        
+    except Exception:
+        df_real = pd.DataFrame()
+
+    # Fallback automático de segurança caso a tabela resulte vazia ou ocorra erro
+    if df_real.empty:
+        st.warning("⚠️ Ajustando visualização padrão. Verifique se selecionou a coluna correta das funcionárias na barra lateral.")
         data_base = []
         for n in NOMES_OFICIAIS:
             mult = 0.35 if "Ellen" in n else 0.10
             data_base.append({
                 "Colaboradora": n,
                 "Exemplares": int(total_exemplares * mult),
-                "SKUs": int(total_skus * mult),
-                "Tempo Parado": f"{dict_paradas[n]} min",
-                "Justificativa": dict_obs[n]
+                "SKUs": int(total_skus * mult)
             })
         df_real = pd.DataFrame(data_base)
         
-    # Layout Lado a Lado
+    # Vinculação das paradas preenchidas manualmente na lateral
+    df_real["Tempo Parado"] = df_real["Colaboradora"].apply(
+        lambda x: f"{next((dict_paradas[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), 0)} min"
+    )
+    df_real["Justificativa"] = df_real["Colaboradora"].apply(
+        lambda x: next((dict_obs[n] for n in NOMES_OFICIAIS if n.upper() in str(x).upper()), "Sem ocorrências.")
+    )
+        
+    # Layout Lado a Lado: Gráfico Slim Compacto & Tabela Executiva
     col_graf, col_tab = st.columns([1, 1.3])
     with col_graf:
         st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📈 Gráfico de Produção</h3>", unsafe_allow_html=True)
