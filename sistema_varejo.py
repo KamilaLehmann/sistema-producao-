@@ -227,22 +227,24 @@ def nome_excel(nome):
 
 # 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
+uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"], key="uploaded_file")
 
 # NOVO: Seleção da data da produtividade para atualizar o e-mail automaticamente
-data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now())
+data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now(), key="data_produtividade")
 data_formatada = data_produtividade.strftime("%d/%m")
 
 # Filtros gerenciais limpos
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
-remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA)
+remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA, key="remover_do_setor")
 
 st.sidebar.markdown("### ❌ Ausências do Dia")
-faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
+faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA, key="faltas_selecionadas")
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 movimentados_selecionados = st.sidebar.multiselect(
     "🚚 Quem foi movimentado(a) hoje?",
-    [n for n in NOMES_LISTA if n not in remover_do_setor and n not in faltas_selecionadas]
+    [n for n in NOMES_LISTA if n not in remover_do_setor and n not in faltas_selecionadas],
+    key="movimentados_selecionados"
 )
 
 dict_movimentacao = {}
@@ -307,10 +309,6 @@ for cargo, integrantes in EQUIPE.items():
             st.sidebar.markdown(f"👤 {op} <span style='font-size:0.8rem; color:gray;'>(sem movimentação)</span>", unsafe_allow_html=True)
             dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": []}
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
-
-# Upload da planilha por último, depois de preencher as informações das operadoras
-st.sidebar.markdown("### 📤 Planilha")
-uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
