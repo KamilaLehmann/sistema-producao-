@@ -127,7 +127,6 @@ def gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, pct_exe
 
     # Cabeçalho
     fig.text(0.04, 0.975, "Painel Executivo de Produção", fontsize=18, fontweight="bold", color="#111827", va="top")
-    fig.text(0.04, 0.935, f"Varejo  ·  Referente ao dia {data_formatada}", fontsize=10, color="#9CA3AF", va="top")
 
     def desenhar_card(x, largura, titulo, valor, sub, cor_accent):
         ax = fig.add_axes([x, 0.68, largura, 0.20])
@@ -144,7 +143,7 @@ def gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, pct_exe
         ax.add_patch(barra)
         ax.text(0.09, 0.76, titulo, fontsize=9, fontweight="bold", color="#9CA3AF", va="top")
         ax.text(0.09, 0.53, valor, fontsize=23, fontweight="bold", color="#111827", va="top")
-        ax.text(0.09, 0.20, sub, fontsize=8, color="#B0B7C3", va="top")
+        ax.text(0.09, 0.20, sub, fontsize=8, color="#111827", va="top")
 
     desenhar_card(0.04, 0.44, "TOTAL DE EXEMPLARES", f"{total_exemplares:,} un",
                   f"Meta Diária: {meta_exemplares:,} un  ·  Atingido: {pct_exemplares:.1%}", "#2563EB")
@@ -228,7 +227,6 @@ def nome_excel(nome):
 
 # 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
-uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 # NOVO: Seleção da data da produtividade para atualizar o e-mail automaticamente
 data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now())
@@ -309,6 +307,10 @@ for cargo, integrantes in EQUIPE.items():
             st.sidebar.markdown(f"👤 {op} <span style='font-size:0.8rem; color:gray;'>(sem movimentação)</span>", unsafe_allow_html=True)
             dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": []}
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+
+# Upload da planilha por último, depois de preencher as informações das operadoras
+st.sidebar.markdown("### 📤 Planilha")
+uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"])
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
 if uploaded_file:
