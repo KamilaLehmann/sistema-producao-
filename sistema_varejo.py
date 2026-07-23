@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime
+import io
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 # 1. Configuração e Estilização de Design Premium (HTML / CSS)
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
 st.markdown("""
@@ -107,6 +111,56 @@ st.markdown("""
 color: #0F172A; margin-bottom: 4px;'>📊 Painel Executivo de Produção</h1>
 <p style='text-align:left; font-family: "Inter", sans-serif; color:#64748B; font-size:0.95rem; margin-top:0; margin-bottom:28px;'>Varejo · acompanhamento diário de produtividade</p>
 """, unsafe_allow_html=True)
+
+def gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, df_real):
+    """Gera uma imagem (PNG) com o resumo de exemplares/SKUs e a tabela de detalhamento,
+    pronta para copiar (clique direito > copiar imagem) ou baixar e anexar por e-mail,
+    sem precisar tirar print da tela."""
+    n_linhas = max(len(df_real), 1)
+    altura_fig = 2.6 + 0.35 * n_linhas
+    fig = plt.figure(figsize=(11, altura_fig), dpi=200)
+    fig.patch.set_facecolor("white")
+
+    # Título e resumo
+    fig.text(0.04, 0.97, "Relatório de Produção — Varejo", fontsize=16, fontweight="bold", color="#0F172A", va="top")
+    fig.text(0.04, 0.91, f"Referente ao dia {data_formatada}", fontsize=10, color="#64748B", va="top")
+
+    fig.text(0.04, 0.80, "TOTAL DE EXEMPLARES", fontsize=8, color="#64748B", fontweight="bold", va="top")
+    fig.text(0.04, 0.75, f"{total_exemplares:,} un", fontsize=18, color="#2563EB", fontweight="bold", va="top")
+
+    fig.text(0.28, 0.80, "TOTAL DE SKU", fontsize=8, color="#64748B", fontweight="bold", va="top")
+    fig.text(0.28, 0.75, f"{total_skus:,}", fontsize=18, color="#0D9488", fontweight="bold", va="top")
+
+    # Tabela de detalhamento
+    ax = fig.add_axes([0.04, 0.03, 0.92, 0.60])
+    ax.axis("off")
+
+    if not df_real.empty:
+        tabela = ax.table(
+            cellText=df_real.values,
+            colLabels=df_real.columns,
+            cellLoc="left",
+            loc="upper left",
+        )
+        tabela.auto_set_font_size(False)
+        tabela.set_fontsize(8)
+        tabela.scale(1, 1.5)
+
+        for (row, col), cell in tabela.get_celld().items():
+            cell.set_edgecolor("#E5E7EB")
+            if row == 0:
+                cell.set_facecolor("#0F172A")
+                cell.set_text_props(color="white", fontweight="bold")
+            else:
+                cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#F8FAFC")
+    else:
+        ax.text(0, 0.9, "Nenhum dado disponível.", fontsize=9, color="#64748B")
+
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 def gerar_texto_detalhamento(df_real):
     """Monta o detalhamento por colaborador em texto simples, pronto para copiar e colar
@@ -322,9 +376,16 @@ if uploaded_file:
     st.markdown("<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; font-weight: 700; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
-    st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>📋 Detalhamento em Texto (selecione tudo e copie)</h4>", unsafe_allow_html=True)
-    texto_detalhamento = gerar_texto_detalhamento(df_real)
-    st.text_area("Detalhamento:", value=texto_detalhamento, height=200, label_visibility="collapsed")
+    st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>🖼️ Relatório em Imagem</h4>", unsafe_allow_html=True)
+    st.caption("Clique com o botão direito na imagem e escolha **Copiar imagem** para colar direto no e-mail, ou baixe o arquivo abaixo.")
+    imagem_relatorio = gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, df_real)
+    st.image(imagem_relatorio, use_container_width=True)
+    st.download_button(
+        label="📥 Baixar Relatório em Imagem",
+        data=imagem_relatorio,
+        file_name=f"relatorio_producao_{data_produtividade.strftime('%Y-%m-%d')}.png",
+        mime="image/png",
+    )
 
     # 4. Caixa de Texto Gerada do E-mail Padronizado Conforme Solicitado
     st.markdown("<br><hr>", unsafe_allow_html=True)
