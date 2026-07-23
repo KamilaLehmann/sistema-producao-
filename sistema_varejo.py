@@ -2,112 +2,123 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime
-
 # 1. Configuração e Estilização de Design Premium (HTML / CSS)
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] { font-family: 'Rajdhani', sans-serif; }
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
-    .stApp {
-        background: radial-gradient(circle at 15% 10%, #0f1b3d 0%, #0a0f1f 45%, #060810 100%);
-        background-attachment: fixed;
-    }
+    .stApp { background-color: #F8FAFC; }
 
     .block-container {padding-top: 1.2rem; padding-bottom: 0rem; max-width: 96%;}
 
     /* Sidebar */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0b1224 0%, #060a14 100%);
-        border-right: 1px solid rgba(34, 211, 238, 0.15);
+        background-color: #FFFFFF;
+        border-right: 1px solid #E5E7EB;
     }
     section[data-testid="stSidebar"] h3 {
-        color: #22D3EE !important;
-        text-shadow: 0 0 8px rgba(34,211,238,0.5);
+        font-family: 'Sora', sans-serif;
+        color: #0F172A !important;
+        font-size: 0.95rem !important;
     }
 
-    /* KPI Cards - glass + neon */
+    /* KPI Cards - minimalistas, com um detalhe de cor de assinatura */
     .card-kpi {
-        background: linear-gradient(135deg, rgba(34,211,238,0.12) 0%, rgba(139,92,246,0.12) 100%);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(34, 211, 238, 0.35);
-        color: #E5E7EB;
-        padding: 22px;
-        border-radius: 16px;
-        box-shadow: 0 0 20px rgba(34, 211, 238, 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
-        text-align: center;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-left: 4px solid var(--accent-color, #2563EB);
+        color: #0F172A;
+        padding: 20px 22px;
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+        text-align: left;
         margin-bottom: 14px;
-        transition: box-shadow 0.3s ease;
+        transition: box-shadow 0.2s ease;
     }
-    .card-kpi:hover { box-shadow: 0 0 30px rgba(139, 92, 246, 0.35); }
+    .card-kpi:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
     .card-title {
-        font-family: 'Orbitron', sans-serif;
-        font-size: 0.85rem; font-weight: 700; opacity: 0.9; margin-bottom: 6px;
-        letter-spacing: 1.5px; text-transform: uppercase; color: #67E8F9;
+        font-family: 'Sora', sans-serif;
+        font-size: 0.8rem; font-weight: 700; opacity: 0.9; margin-bottom: 6px;
+        letter-spacing: 1px; text-transform: uppercase; color: #64748B;
     }
     .card-value {
-        font-family: 'Orbitron', sans-serif;
-        font-size: 2.4rem; font-weight: 800; line-height: 1; margin-bottom: 8px;
-        color: #FFFFFF; text-shadow: 0 0 18px rgba(34,211,238,0.55);
+        font-family: 'Sora', sans-serif;
+        font-size: 2.3rem; font-weight: 800; line-height: 1; margin-bottom: 8px;
+        color: #0F172A;
     }
-    .card-sub { font-size: 0.9rem; opacity: 0.85; font-weight: 600; color: #94A3B8; }
+    .card-sub { font-size: 0.85rem; font-weight: 600; color: #94A3B8; }
 
     div.stProgress > div > div > div {
-        background: linear-gradient(90deg, #22D3EE 0%, #8B5CF6 100%);
-        height: 8px; border-radius: 4px;
-        box-shadow: 0 0 10px rgba(34,211,238,0.6);
+        background: #2563EB;
+        height: 6px; border-radius: 4px;
     }
-    div.stProgress > div > div { background: rgba(255,255,255,0.06); border-radius: 4px; }
+    div.stProgress > div > div { background: #E5E7EB; border-radius: 4px; }
 
-    hr { border-color: rgba(34, 211, 238, 0.15) !important; }
+    hr { border-color: #E5E7EB !important; }
 
     /* Botões */
     .stButton>button {
-        background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(139,92,246,0.15));
-        border: 1px solid rgba(34,211,238,0.4);
-        color: #E5E7EB;
+        background: #FFFFFF;
+        border: 1px solid #CBD5E1;
+        color: #0F172A;
         border-radius: 8px;
-        font-family: 'Rajdhani', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-weight: 600;
-        letter-spacing: 0.5px;
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
     }
     .stButton>button:hover {
-        border-color: #8B5CF6;
-        box-shadow: 0 0 12px rgba(139,92,246,0.5);
-        color: #ffffff;
+        border-color: #2563EB;
+        color: #2563EB;
+    }
+    div[data-testid="stDownloadButton"] button {
+        background: #0F172A;
+        border: 1px solid #0F172A;
+        color: #FFFFFF;
+    }
+    div[data-testid="stDownloadButton"] button:hover {
+        background: #1E293B;
+        border-color: #1E293B;
+        color: #FFFFFF;
     }
 
     /* Campos de texto e data */
     .stTextInput>div>div>input, .stDateInput input {
-        background-color: rgba(255,255,255,0.04);
-        color: #E5E7EB;
-        border: 1px solid rgba(148,163,184,0.25);
+        background-color: #FFFFFF;
+        color: #0F172A;
+        border: 1px solid #E2E8F0;
         border-radius: 6px;
     }
-    .stTextInput>div>div>input:focus {
-        border-color: #22D3EE;
-        box-shadow: 0 0 8px rgba(34,211,238,0.4);
-    }
+    .stTextInput>div>div>input:focus { border-color: #2563EB; }
 
     /* Tabela */
     div[data-testid="stDataFrame"] {
-        border: 1px solid rgba(34, 211, 238, 0.25);
-        border-radius: 12px;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
         overflow: hidden;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<h1 style='text-align:center; font-family: "Orbitron", sans-serif; font-weight:800; letter-spacing:2px;
-background: linear-gradient(90deg, #22D3EE, #8B5CF6);
--webkit-background-clip: text; -webkit-text-fill-color: transparent;
-text-shadow: 0 0 25px rgba(34,211,238,0.25);
-margin-bottom: 30px;'>📊 PAINEL EXECUTIVO DE PRODUÇÃO — VAREJO</h1>
+<h1 style='text-align:left; font-family: "Sora", sans-serif; font-weight:800; letter-spacing:-0.5px;
+color: #0F172A; margin-bottom: 4px;'>📊 Painel Executivo de Produção</h1>
+<p style='text-align:left; font-family: "Inter", sans-serif; color:#64748B; font-size:0.95rem; margin-top:0; margin-bottom:28px;'>Varejo · acompanhamento diário de produtividade</p>
 """, unsafe_allow_html=True)
+
+def gerar_texto_detalhamento(df_real):
+    """Monta o detalhamento por colaborador em texto simples, pronto para copiar e colar
+    (por e-mail, WhatsApp, etc.), sem precisar tirar print da tela."""
+    if df_real.empty:
+        return "Nenhum dado disponível."
+    linhas = []
+    for _, row in df_real.iterrows():
+        linhas.append(
+            f"{row['Colaboradora']} ({row['Cargo']}): {row['Exemplares']} exemplares | {row['SKUs']} SKUs — {row['Movimentação Operacional']}"
+        )
+    return "\n".join(linhas)
 
 # Organização da equipe por cargos oficiais
 EQUIPE = {
@@ -252,10 +263,10 @@ if uploaded_file:
     
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f'<div class="card-kpi"><div class="card-title">📦 TOTAL DE EXEMPLARES</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un | Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi" style="--accent-color:#2563EB;"><div class="card-title">📦 Total de Exemplares</div><div class="card-value">{total_exemplares:,} un</div><div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un · Atingido: {pct_exemplares:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_exemplares, 1.0))
     with c2:
-        st.markdown(f'<div class="card-kpi" style="background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);"><div class="card-title">🏷️ TOTAL DE SKU</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} | Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card-kpi" style="--accent-color:#0D9488;"><div class="card-title">🏷️ Total de SKU</div><div class="card-value">{total_skus:,}</div><div class="card-sub">Meta Diária: {META_SKUS:,} · Atingido: {pct_skus:.1%}</div></div>', unsafe_allow_html=True)
         st.progress(min(pct_skus, 1.0))
         
     st.markdown("<br>", unsafe_allow_html=True)
@@ -308,12 +319,16 @@ if uploaded_file:
         })
         
     df_real = pd.DataFrame(data_gerencial)
-    st.markdown("<h3 style='font-family: \"Orbitron\", sans-serif; color: #67E8F9; text-shadow: 0 0 10px rgba(34,211,238,0.4); font-size: 1.1rem; font-weight: 700; letter-spacing: 1px; margin-bottom:10px;'>📋 DETALHAMENTO GERENCIAL DE PRODUTIVIDADE</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; font-weight: 700; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
+
+    st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>📋 Detalhamento em Texto (selecione tudo e copie)</h4>", unsafe_allow_html=True)
+    texto_detalhamento = gerar_texto_detalhamento(df_real)
+    st.text_area("Detalhamento:", value=texto_detalhamento, height=200, label_visibility="collapsed")
 
     # 4. Caixa de Texto Gerada do E-mail Padronizado Conforme Solicitado
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    st.markdown("<h3 style='font-family: \"Orbitron\", sans-serif; color: #A78BFA; text-shadow: 0 0 10px rgba(139,92,246,0.4); font-size: 1.1rem; font-weight: 700; letter-spacing: 1px;'>✉️ TEXTO DO E-MAIL PRONTO PARA A DIRETORIA</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
     
     texto_final = f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\nreferente ao dia {data_formatada}.\n\n--------------------------------\nResumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n--------------------------------\n\nAtenciosamente,"
     
