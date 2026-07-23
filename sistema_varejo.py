@@ -41,8 +41,18 @@ ALIAS_EXCEL = {
     "Beatriz Alcantara": "BEATRIZ",
 }
 
+import unicodedata
+
+def normalizar(texto):
+    """Remove acentos, espaços extras e padroniza para maiúsculas, evitando falhas de
+    correspondência entre o nome cadastrado no painel e o nome como aparece na planilha."""
+    texto = str(texto).strip().upper()
+    texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("ASCII")
+    texto = " ".join(texto.split())
+    return texto
+
 def nome_excel(nome):
-    return ALIAS_EXCEL.get(nome, nome.upper())
+    return normalizar(ALIAS_EXCEL.get(nome, nome))
 
 # 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
@@ -116,7 +126,7 @@ if uploaded_file:
             val_m = sheet.cell(row=row, column=13).value  # Coluna M (USUARIO)
             
             if val_i is not None and val_m is not None:
-                dados_visiveis.append({"TOTAL": val_i, "USUARIO": str(val_m).strip().upper()})
+                dados_visiveis.append({"TOTAL": val_i, "USUARIO": normalizar(val_m)})
                 
     if dados_visiveis:
         df_filtrado = pd.DataFrame(dados_visiveis)
