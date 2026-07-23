@@ -95,34 +95,39 @@ for cargo, integrantes in EQUIPE.items():
         if is_ausente:
             st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
             dict_motivos_falta[op] = st.sidebar.text_input(f"Motivo da falta de {op}:", value="Falta administrativa", key=f"mot_falta_{op}")
-            dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
+            dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": []}
         elif is_movimentado:
             st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
-            st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
-            c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
-            
-            init_sai1 = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
-            init_ret1 = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
-            init_loc1 = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
-            
-            with c_sai1: sai1 = st.text_input("Saída 1:", value=init_sai1, key=f"sai1_{op}")
-            with c_ret1: ret1 = st.text_input("Retorno 1:", value=init_ret1, key=f"ret1_{op}")
-            with c_loc1: loc1 = st.text_input("Local 1:", value=init_loc1, key=f"loc1_{op}")
-            
-            st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Segunda Saída (Se houver):</span>", unsafe_allow_html=True)
-            c_sai2, c_ret2, c_loc2 = st.sidebar.columns(3)
-            with c_sai2: sai2 = st.text_input("Saída 2:", value="", key=f"sai2_{op}")
-            with c_ret2: ret2 = st.text_input("Retorno 2:", value="", key=f"ret2_{op}")
-            with c_loc2: loc2 = st.text_input("Local 2:", value="", key=f"loc2_{op}")
-                
-            dict_movimentacao[op] = {
-                "sai1": sai1, "ret1": ret1, "loc1": loc1,
-                "sai2": sai2, "ret2": ret2, "loc2": loc2,
-                "cargo": cargo
-            }
+
+            if f"num_mov_{op}" not in st.session_state:
+                st.session_state[f"num_mov_{op}"] = 1  # começa com 1 saída, e cresce com o botão "+"
+
+            movimentacoes_op = []
+            for idx in range(1, st.session_state[f"num_mov_{op}"] + 1):
+                st.sidebar.markdown(f"<span style='font-size:0.8rem; color:gray;'>Saída {idx}:</span>", unsafe_allow_html=True)
+                c_sai, c_ret, c_loc = st.sidebar.columns(3)
+
+                # Valores padrão (apenas na primeira saída, pra manter o comportamento de antes)
+                init_sai, init_ret, init_loc = "", "", ""
+                if idx == 1:
+                    init_sai = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+                    init_ret = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
+                    init_loc = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+
+                with c_sai: sai = st.text_input("Saída:", value=init_sai, key=f"sai_{op}_{idx}")
+                with c_ret: ret = st.text_input("Retorno:", value=init_ret, key=f"ret_{op}_{idx}")
+                with c_loc: loc = st.text_input("Local:", value=init_loc, key=f"loc_{op}_{idx}")
+
+                movimentacoes_op.append({"sai": sai, "ret": ret, "loc": loc})
+
+            if st.sidebar.button(f"➕ Adicionar saída para {op}", key=f"add_mov_{op}"):
+                st.session_state[f"num_mov_{op}"] += 1
+                st.rerun()
+
+            dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": movimentacoes_op}
         else:
             st.sidebar.markdown(f"👤 {op} <span style='font-size:0.8rem; color:gray;'>(sem movimentação)</span>", unsafe_allow_html=True)
-            dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
+            dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": []}
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
@@ -194,10 +199,10 @@ if uploaded_file:
                 continue
                 
             historico_justificativas = []
-            if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
-                historico_justificativas.append(f"Encaminhada ao {mov['loc1']} das {mov['sai1']} às {mov['ret1']}")
-            if mov["sai2"].strip() != "" and mov["sai2"].strip().upper() != "N/A":
-                historico_justificativas.append(f"encaminhada ao {mov['loc2']} das {mov['sai2']} às {mov['ret2']}")
+            for idx, m in enumerate(mov["movimentacoes"]):
+                if m["sai"].strip() != "" and m["sai"].strip().upper() != "N/A":
+                    prefixo = "Encaminhada" if idx == 0 else "encaminhada"
+                    historico_justificativas.append(f"{prefixo} ao {m['loc']} das {m['sai']} às {m['ret']}")
                 
             justificativa_texto = " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             
