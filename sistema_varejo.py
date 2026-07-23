@@ -199,7 +199,7 @@ def gerar_texto_detalhamento(df_real):
 EQUIPE = {
     "Líder": ["Kamila Moraes", "Beatriz Alcantara"],
     "Apoio": ["Alisson Lima"],
-    "Operador(a)": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton", "Ellen Kelly"]
+    "Operador(a)": ["Rosana Delfino", "Ana Caroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton", "Ellen Kelly"]
 }
 NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operador(a)"]
 
@@ -279,9 +279,9 @@ for cargo, integrantes in EQUIPE.items():
                 # Valores padrão (apenas na primeira saída, pra manter o comportamento de antes)
                 init_sai, init_ret, init_loc = "", "", ""
                 if idx == 1:
-                    init_sai = "06h15" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
-                    init_ret = "10h00" if op == "Gabriele" else ("10h30" if op in ["Anacaroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
-                    init_loc = "Setor Loja" if op in ["Anacaroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+                    init_sai = "06h15" if op in ["Ana Caroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
+                    init_ret = "10h00" if op == "Gabriele" else ("10h30" if op in ["Ana Caroline", "Karoline Gonçalves"] else ("07h30" if op == "Rosana Delfino" else ""))
+                    init_loc = "Setor Loja" if op in ["Ana Caroline", "Rosana Delfino", "Karoline Gonçalves", "Gabriele"] else ""
 
                 with c_sai: sai = st.text_input("Saída:", value=init_sai, key=f"sai_{op}_{idx}")
                 with c_ret: ret = st.text_input("Retorno:", value=init_ret, key=f"ret_{op}_{idx}")
