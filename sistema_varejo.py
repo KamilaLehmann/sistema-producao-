@@ -72,6 +72,11 @@ st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA)
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
+movimentados_selecionados = st.sidebar.multiselect(
+    "🚚 Quem foi movimentado(a) hoje?",
+    [n for n in NOMES_LISTA if n not in remover_do_setor and n not in faltas_selecionadas]
+)
+
 dict_movimentacao = {}
 dict_motivos_falta = {}
 
@@ -85,12 +90,13 @@ for cargo, integrantes in EQUIPE.items():
             continue
             
         is_ausente = op in faltas_selecionadas
+        is_movimentado = op in movimentados_selecionados
         
         if is_ausente:
             st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
             dict_motivos_falta[op] = st.sidebar.text_input(f"Motivo da falta de {op}:", value="Falta administrativa", key=f"mot_falta_{op}")
             dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
-        else:
+        elif is_movimentado:
             st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
             st.sidebar.markdown("<span style='font-size:0.8rem; color:gray;'>Primeira Saída:</span>", unsafe_allow_html=True)
             c_sai1, c_ret1, c_loc1 = st.sidebar.columns(3)
@@ -114,6 +120,9 @@ for cargo, integrantes in EQUIPE.items():
                 "sai2": sai2, "ret2": ret2, "loc2": loc2,
                 "cargo": cargo
             }
+        else:
+            st.sidebar.markdown(f"👤 {op} <span style='font-size:0.8rem; color:gray;'>(sem movimentação)</span>", unsafe_allow_html=True)
+            dict_movimentacao[op] = {"sai1": "", "ret1": "", "loc1": "", "sai2": "", "ret2": "", "loc2": "", "cargo": cargo}
         st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 # 3. Lógica: Lendo Apenas Linhas Visíveis (Filtradas) do Excel
