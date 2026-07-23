@@ -166,6 +166,11 @@ if uploaded_file:
                 qtd_skus = int(len(df_func))
             else:
                 qtd_exemplares, qtd_skus = 0, 0
+
+            # Se o operador não aparece na planilha (nenhum registro encontrado) e não está
+            # marcado como ausente, ele é ignorado e não entra na tabela gerencial.
+            if qtd_skus == 0:
+                continue
                 
             historico_justificativas = []
             if mov["sai1"].strip() != "" and mov["sai1"].strip().upper() != "N/A":
