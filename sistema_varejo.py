@@ -229,16 +229,24 @@ def nome_excel(nome):
 st.sidebar.header("🛠️ Controle Operacional")
 uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"], key="uploaded_file")
 
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+
 # NOVO: Seleção da data da produtividade para atualizar o e-mail automaticamente
 data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now(), key="data_produtividade")
 data_formatada = data_produtividade.strftime("%d/%m")
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 # Filtros gerenciais limpos
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
 remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA, key="remover_do_setor")
 
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+
 st.sidebar.markdown("### ❌ Ausências do Dia")
 faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA, key="faltas_selecionadas")
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 st.sidebar.markdown("### ⏳ Movimentação de Horários")
 movimentados_selecionados = st.sidebar.multiselect(
@@ -246,6 +254,8 @@ movimentados_selecionados = st.sidebar.multiselect(
     [n for n in NOMES_LISTA if n not in remover_do_setor and n not in faltas_selecionadas],
     key="movimentados_selecionados"
 )
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
 dict_movimentacao = {}
 dict_motivos_falta = {}
