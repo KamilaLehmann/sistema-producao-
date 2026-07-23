@@ -112,47 +112,68 @@ color: #0F172A; margin-bottom: 4px;'>📊 Painel Executivo de Produção</h1>
 <p style='text-align:left; font-family: "Inter", sans-serif; color:#64748B; font-size:0.95rem; margin-top:0; margin-bottom:28px;'>Varejo · acompanhamento diário de produtividade</p>
 """, unsafe_allow_html=True)
 
-def gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, df_real):
-    """Gera uma imagem (PNG) com o resumo de exemplares/SKUs e a tabela de detalhamento,
-    pronta para copiar (clique direito > copiar imagem) ou baixar e anexar por e-mail,
-    sem precisar tirar print da tela."""
-    n_linhas = max(len(df_real), 1)
-    altura_fig = 2.6 + 0.35 * n_linhas
+import matplotlib.patches as mpatches
+
+def gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, pct_exemplares, pct_skus, meta_exemplares, meta_skus, df_real):
+    """Gera uma imagem (PNG) parecida com um print da tela: cards de KPI + tabela de
+    detalhamento (sem os números individuais de Exemplares/SKUs, que a diretoria não
+    precisa ver), pronta para copiar (clique direito > copiar imagem) ou baixar."""
+    df_relatorio = df_real[["Cargo", "Colaboradora", "Movimentação Operacional"]] if not df_real.empty else df_real
+
+    n_linhas = max(len(df_relatorio), 1)
+    altura_fig = 3.5 + 0.35 * n_linhas
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
-    fig.patch.set_facecolor("white")
+    fig.patch.set_facecolor("#FAFAFA")
 
-    # Título e resumo
-    fig.text(0.04, 0.97, "Relatório de Produção — Varejo", fontsize=16, fontweight="bold", color="#0F172A", va="top")
-    fig.text(0.04, 0.91, f"Referente ao dia {data_formatada}", fontsize=10, color="#64748B", va="top")
+    # Cabeçalho
+    fig.text(0.04, 0.975, "Painel Executivo de Produção", fontsize=18, fontweight="bold", color="#111827", va="top")
+    fig.text(0.04, 0.935, f"Varejo  ·  Referente ao dia {data_formatada}", fontsize=10, color="#9CA3AF", va="top")
 
-    fig.text(0.04, 0.80, "TOTAL DE EXEMPLARES", fontsize=8, color="#64748B", fontweight="bold", va="top")
-    fig.text(0.04, 0.75, f"{total_exemplares:,} un", fontsize=18, color="#2563EB", fontweight="bold", va="top")
+    def desenhar_card(x, largura, titulo, valor, sub, cor_accent):
+        ax = fig.add_axes([x, 0.68, largura, 0.20])
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+        card = mpatches.FancyBboxPatch(
+            (0.01, 0.04), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.08",
+            linewidth=1, edgecolor="#EAEAEA", facecolor="white", transform=ax.transAxes
+        )
+        ax.add_patch(card)
+        barra = mpatches.FancyBboxPatch(
+            (0.01, 0.04), 0.015, 0.92, boxstyle="round,pad=0,rounding_size=0.008",
+            linewidth=0, facecolor=cor_accent, transform=ax.transAxes
+        )
+        ax.add_patch(barra)
+        ax.text(0.09, 0.76, titulo, fontsize=9, fontweight="bold", color="#9CA3AF", va="top")
+        ax.text(0.09, 0.53, valor, fontsize=23, fontweight="bold", color="#111827", va="top")
+        ax.text(0.09, 0.20, sub, fontsize=8, color="#B0B7C3", va="top")
 
-    fig.text(0.28, 0.80, "TOTAL DE SKU", fontsize=8, color="#64748B", fontweight="bold", va="top")
-    fig.text(0.28, 0.75, f"{total_skus:,}", fontsize=18, color="#0D9488", fontweight="bold", va="top")
+    desenhar_card(0.04, 0.44, "TOTAL DE EXEMPLARES", f"{total_exemplares:,} un",
+                  f"Meta Diária: {meta_exemplares:,} un  ·  Atingido: {pct_exemplares:.1%}", "#2563EB")
+    desenhar_card(0.52, 0.44, "TOTAL DE SKU", f"{total_skus:,}",
+                  f"Meta Diária: {meta_skus:,}  ·  Atingido: {pct_skus:.1%}", "#0D9488")
 
-    # Tabela de detalhamento
-    ax = fig.add_axes([0.04, 0.03, 0.92, 0.60])
+    # Tabela de detalhamento (sem colunas de produção individual)
+    ax = fig.add_axes([0.04, 0.03, 0.92, 0.58])
     ax.axis("off")
 
-    if not df_real.empty:
+    if not df_relatorio.empty:
         tabela = ax.table(
-            cellText=df_real.values,
-            colLabels=df_real.columns,
+            cellText=df_relatorio.values,
+            colLabels=df_relatorio.columns,
             cellLoc="left",
             loc="upper left",
+            colWidths=[0.14, 0.22, 0.64],
         )
         tabela.auto_set_font_size(False)
-        tabela.set_fontsize(8)
-        tabela.scale(1, 1.5)
+        tabela.set_fontsize(8.5)
+        tabela.scale(1, 1.8)
 
         for (row, col), cell in tabela.get_celld().items():
-            cell.set_edgecolor("#E5E7EB")
+            cell.set_edgecolor("#EFEFEF")
             if row == 0:
-                cell.set_facecolor("#0F172A")
+                cell.set_facecolor("#111827")
                 cell.set_text_props(color="white", fontweight="bold")
             else:
-                cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#F8FAFC")
+                cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#FAFAFA")
     else:
         ax.text(0, 0.9, "Nenhum dado disponível.", fontsize=9, color="#64748B")
 
@@ -378,7 +399,10 @@ if uploaded_file:
 
     st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>🖼️ Relatório em Imagem</h4>", unsafe_allow_html=True)
     st.caption("Clique com o botão direito na imagem e escolha **Copiar imagem** para colar direto no e-mail, ou baixe o arquivo abaixo.")
-    imagem_relatorio = gerar_relatorio_imagem(data_formatada, total_exemplares, total_skus, df_real)
+    imagem_relatorio = gerar_relatorio_imagem(
+        data_formatada, total_exemplares, total_skus,
+        pct_exemplares, pct_skus, META_EXEMPLARES, META_SKUS, df_real
+    )
     st.image(imagem_relatorio, use_container_width=True)
     st.download_button(
         label="📥 Baixar Relatório em Imagem",
