@@ -28,11 +28,21 @@ st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; ma
 
 # Organização da equipe por cargos oficiais
 EQUIPE = {
-    "Líder": ["Kamila Moraes"],
+    "Líder": ["Kamila Moraes", "Beatriz Alcantara"],
     "Apoio": ["Alisson Lima"],
-    "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas"]
+    "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton"]
 }
 NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
+
+# Mapeamento de nomes que aparecem de forma diferente (abreviada) na planilha Excel.
+# A chave é o nome de exibição usado no painel; o valor é como o nome aparece na coluna USUARIO do Excel.
+# Por padrão, o próprio nome (em maiúsculas) é usado para o cruzamento dos dados.
+ALIAS_EXCEL = {
+    "Beatriz Alcantara": "BEATRIZ",
+}
+
+def nome_excel(nome):
+    return ALIAS_EXCEL.get(nome, nome.upper())
 
 # 2. Barra Lateral de Controle Unificada
 st.sidebar.header("🛠️ Controle Operacional")
@@ -151,7 +161,7 @@ if uploaded_file:
             mov = dict_movimentacao[n]
             cargo_atual = mov["cargo"]
             if not df_filtrado.empty:
-                df_func = df_filtrado[df_filtrado["USUARIO"] == n.upper()]
+                df_func = df_filtrado[df_filtrado["USUARIO"] == nome_excel(n)]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
                 qtd_skus = int(len(df_func))
             else:
