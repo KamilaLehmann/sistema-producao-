@@ -7,24 +7,107 @@ from datetime import datetime
 st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem; max-width: 96%;}
-    .card-kpi {
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
-        color: white;
-        padding: 18px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-        text-align: center;
-        margin-bottom: 12px;
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Rajdhani', sans-serif; }
+
+    .stApp {
+        background: radial-gradient(circle at 15% 10%, #0f1b3d 0%, #0a0f1f 45%, #060810 100%);
+        background-attachment: fixed;
     }
-    .card-title { font-size: 1rem; font-weight: 700; opacity: 0.95; margin-bottom: 4px; letter-spacing: 0.5px; }
-    .card-value { font-size: 2.2rem; font-weight: 800; line-height: 1; margin-bottom: 6px; color: #FFFFFF; }
-    .card-sub { font-size: 0.85rem; opacity: 0.9; font-weight: 600; }
-    div.stProgress > div > div > div { background-color: #10B981; height: 8px; }
+
+    .block-container {padding-top: 1.2rem; padding-bottom: 0rem; max-width: 96%;}
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0b1224 0%, #060a14 100%);
+        border-right: 1px solid rgba(34, 211, 238, 0.15);
+    }
+    section[data-testid="stSidebar"] h3 {
+        color: #22D3EE !important;
+        text-shadow: 0 0 8px rgba(34,211,238,0.5);
+    }
+
+    /* KPI Cards - glass + neon */
+    .card-kpi {
+        background: linear-gradient(135deg, rgba(34,211,238,0.12) 0%, rgba(139,92,246,0.12) 100%);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(34, 211, 238, 0.35);
+        color: #E5E7EB;
+        padding: 22px;
+        border-radius: 16px;
+        box-shadow: 0 0 20px rgba(34, 211, 238, 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+        text-align: center;
+        margin-bottom: 14px;
+        transition: box-shadow 0.3s ease;
+    }
+    .card-kpi:hover { box-shadow: 0 0 30px rgba(139, 92, 246, 0.35); }
+    .card-title {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 0.85rem; font-weight: 700; opacity: 0.9; margin-bottom: 6px;
+        letter-spacing: 1.5px; text-transform: uppercase; color: #67E8F9;
+    }
+    .card-value {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 2.4rem; font-weight: 800; line-height: 1; margin-bottom: 8px;
+        color: #FFFFFF; text-shadow: 0 0 18px rgba(34,211,238,0.55);
+    }
+    .card-sub { font-size: 0.9rem; opacity: 0.85; font-weight: 600; color: #94A3B8; }
+
+    div.stProgress > div > div > div {
+        background: linear-gradient(90deg, #22D3EE 0%, #8B5CF6 100%);
+        height: 8px; border-radius: 4px;
+        box-shadow: 0 0 10px rgba(34,211,238,0.6);
+    }
+    div.stProgress > div > div { background: rgba(255,255,255,0.06); border-radius: 4px; }
+
+    hr { border-color: rgba(34, 211, 238, 0.15) !important; }
+
+    /* Botões */
+    .stButton>button {
+        background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(139,92,246,0.15));
+        border: 1px solid rgba(34,211,238,0.4);
+        color: #E5E7EB;
+        border-radius: 8px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        border-color: #8B5CF6;
+        box-shadow: 0 0 12px rgba(139,92,246,0.5);
+        color: #ffffff;
+    }
+
+    /* Campos de texto e data */
+    .stTextInput>div>div>input, .stDateInput input {
+        background-color: rgba(255,255,255,0.04);
+        color: #E5E7EB;
+        border: 1px solid rgba(148,163,184,0.25);
+        border-radius: 6px;
+    }
+    .stTextInput>div>div>input:focus {
+        border-color: #22D3EE;
+        box-shadow: 0 0 8px rgba(34,211,238,0.4);
+    }
+
+    /* Tabela */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid rgba(34, 211, 238, 0.25);
+        border-radius: 12px;
+        overflow: hidden;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 25px;'>📊 Painel Executivo de Produção - Varejo</h1>", unsafe_allow_html=True)
+st.markdown("""
+<h1 style='text-align:center; font-family: "Orbitron", sans-serif; font-weight:800; letter-spacing:2px;
+background: linear-gradient(90deg, #22D3EE, #8B5CF6);
+-webkit-background-clip: text; -webkit-text-fill-color: transparent;
+text-shadow: 0 0 25px rgba(34,211,238,0.25);
+margin-bottom: 30px;'>📊 PAINEL EXECUTIVO DE PRODUÇÃO — VAREJO</h1>
+""", unsafe_allow_html=True)
 
 # Organização da equipe por cargos oficiais
 EQUIPE = {
@@ -120,9 +203,19 @@ for cargo, integrantes in EQUIPE.items():
 
                 movimentacoes_op.append({"sai": sai, "ret": ret, "loc": loc})
 
-            if st.sidebar.button(f"➕ Adicionar saída para {op}", key=f"add_mov_{op}"):
-                st.session_state[f"num_mov_{op}"] += 1
-                st.rerun()
+            c_add, c_rem = st.sidebar.columns(2)
+            with c_add:
+                if st.button("➕ Adicionar", key=f"add_mov_{op}", use_container_width=True):
+                    st.session_state[f"num_mov_{op}"] += 1
+                    st.rerun()
+            with c_rem:
+                if st.session_state[f"num_mov_{op}"] > 1:
+                    if st.button("🗑️ Excluir", key=f"rem_mov_{op}", use_container_width=True):
+                        idx_remover = st.session_state[f"num_mov_{op}"]
+                        for campo in ["sai", "ret", "loc"]:
+                            st.session_state.pop(f"{campo}_{op}_{idx_remover}", None)
+                        st.session_state[f"num_mov_{op}"] -= 1
+                        st.rerun()
 
             dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": movimentacoes_op}
         else:
@@ -215,12 +308,12 @@ if uploaded_file:
         })
         
     df_real = pd.DataFrame(data_gerencial)
-    st.markdown("<h3 style='color: #4B5563; font-size: 1.2rem; font-weight: 600; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-family: \"Orbitron\", sans-serif; color: #67E8F9; text-shadow: 0 0 10px rgba(34,211,238,0.4); font-size: 1.1rem; font-weight: 700; letter-spacing: 1px; margin-bottom:10px;'>📋 DETALHAMENTO GERENCIAL DE PRODUTIVIDADE</h3>", unsafe_allow_html=True)
     st.dataframe(df_real, use_container_width=True, hide_index=True)
 
     # 4. Caixa de Texto Gerada do E-mail Padronizado Conforme Solicitado
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color: #1E3A8A; font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-family: \"Orbitron\", sans-serif; color: #A78BFA; text-shadow: 0 0 10px rgba(139,92,246,0.4); font-size: 1.1rem; font-weight: 700; letter-spacing: 1px;'>✉️ TEXTO DO E-MAIL PRONTO PARA A DIRETORIA</h3>", unsafe_allow_html=True)
     
     texto_final = f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\nreferente ao dia {data_formatada}.\n\n--------------------------------\nResumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n--------------------------------\n\nAtenciosamente,"
     
