@@ -30,9 +30,9 @@ st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-weight: 800; ma
 EQUIPE = {
     "Líder": ["Kamila Moraes", "Beatriz Alcantara"],
     "Apoio": ["Alisson Lima"],
-    "Operadoras": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton"]
+    "Operador(a)": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton"]
 }
-NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operadoras"]
+NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operador(a)"]
 
 # Mapeamento de nomes que aparecem de forma diferente (abreviada) na planilha Excel.
 # A chave é o nome de exibição usado no painel; o valor é como o nome aparece na coluna USUARIO do Excel.
@@ -154,7 +154,7 @@ if uploaded_file:
             qtd_skus = 0
             motivo_individual = dict_motivos_falta.get(n, "Falta administrativa")
             justificativa_texto = f"Ausente. Motivo: {motivo_individual}."
-            cargo_atual = "Operadoras"
+            cargo_atual = "Operador(a)"
             for c, ints in EQUIPE.items():
                 if n in ints: cargo_atual = c
         else:
