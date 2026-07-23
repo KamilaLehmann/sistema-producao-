@@ -199,7 +199,7 @@ def gerar_texto_detalhamento(df_real):
 EQUIPE = {
     "Líder": ["Kamila Moraes", "Beatriz Alcantara"],
     "Apoio": ["Alisson Lima"],
-    "Operador(a)": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton"]
+    "Operador(a)": ["Rosana Delfino", "Anacaroline", "Karoline Gonçalves", "Gabriele", "Beatriz Mascarenhas", "Graziela Pereira", "Paula Roberta", "Weliton", "Ellen Kelly"]
 }
 NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operador(a)"]
 
