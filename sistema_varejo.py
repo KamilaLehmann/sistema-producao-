@@ -39,6 +39,8 @@ NOMES_LISTA = EQUIPE["Líder"] + EQUIPE["Apoio"] + EQUIPE["Operador(a)"]
 # Por padrão, o próprio nome (em maiúsculas) é usado para o cruzamento dos dados.
 ALIAS_EXCEL = {
     "Beatriz Alcantara": "BEATRIZ",
+    "Graziela Pereira": "GRAZIELA PEREIRA DO NASCIMENTO",
+    "Paula Roberta": "PAULA ROBERTA SANTOS DA SILVA",
 }
 
 import unicodedata
