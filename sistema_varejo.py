@@ -210,6 +210,7 @@ ALIAS_EXCEL = {
     "Beatriz Alcantara": "BEATRIZ",
     "Graziela Pereira": "GRAZIELA PEREIRA DO NASCIMENTO",
     "Paula Roberta": "PAULA ROBERTA SANTOS DA SILVA",
+    "Ana Caroline": "ANACAROLINE",
 }
 
 import unicodedata
