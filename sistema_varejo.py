@@ -28,6 +28,9 @@ Melhorias implementadas nesta versão em relação ao script original:
  12. Tabela do detalhamento gerencial mais compacta (linhas menores, sem
      alterar o conteúdo do texto), com opção de editá-la como planilha e de
      ocultar/exibir Exemplares e SKUs individuais sob demanda.
+ 13. Coluna "Movimentação Operacional" agora aceita texto livre editado à mão
+     (persistido por pessoa + data, sobrepondo o texto gerado automaticamente
+     a partir dos horários), com botão para restaurar o texto automático.
 """
 
 import streamlit as st
@@ -302,6 +305,11 @@ DEFAULT_EQUIPE = {
 
 if "equipe_config" not in st.session_state:
     st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))  # cópia profunda
+
+if "mov_manual_overrides" not in st.session_state:
+    # Guarda o texto digitado à mão na coluna "Movimentação Operacional",
+    # por pessoa e por data, para que não se perca a cada rerun do Streamlit.
+    st.session_state["mov_manual_overrides"] = {}
 
 
 def construir_estruturas_equipe(config):
@@ -871,6 +879,8 @@ if uploaded_file:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # --- Tabela gerencial individual -----------------------------------------
+    data_str_atual = data_produtividade.strftime("%Y-%m-%d")
+
     data_gerencial = []
     for n in NOMES_LISTA:
         if n in remover_do_setor:
@@ -922,6 +932,12 @@ if uploaded_file:
                 " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             )
 
+        # Se a pessoa tiver um texto editado manualmente para esta data, ele
+        # prevalece sobre o texto gerado automaticamente a partir dos horários.
+        override_chave = (data_str_atual, n)
+        if override_chave in st.session_state["mov_manual_overrides"]:
+            justificativa_texto = st.session_state["mov_manual_overrides"][override_chave]
+
         linha = {
             "Cargo": cargo_atual,
             "Colaboradora": n,
@@ -967,19 +983,53 @@ if uploaded_file:
         df_exibir = df_real.drop(columns=[c for c in colunas_ocultaveis if c in df_real.columns])
 
     if modo_edicao:
+        st.caption(
+            "✍️ A coluna **Movimentação Operacional** é livre — escreva o que quiser. "
+            "As demais colunas ficam bloqueadas aqui para não conflitar com os dados da "
+            "planilha; o texto digitado fica salvo para esta data mesmo se você atualizar a página."
+        )
+
+        colunas_bloqueadas = [c for c in df_exibir.columns if c != "Movimentação Operacional"]
+
         df_exibir_editado = st.data_editor(
             df_exibir,
             use_container_width=True,
             hide_index=True,
             num_rows="fixed",
             key="editor_tabela_gerencial",
+            disabled=colunas_bloqueadas,
+            column_config={
+                "Movimentação Operacional": st.column_config.TextColumn(
+                    "Movimentação Operacional",
+                    help="Escreva livremente o que quiser exibir para esta pessoa.",
+                ),
+            },
         )
+
         # Reincorpora as edições feitas na grade de volta ao df_real completo,
         # preservando as colunas que estiverem ocultas no momento (ex.: se
         # Exemplares/SKUs estiverem escondidos, seus valores originais não são
         # perdidos — só as colunas visíveis são atualizadas com o que foi editado).
         for col in df_exibir_editado.columns:
             df_real[col] = df_exibir_editado[col].values
+
+        # Persiste o texto livre digitado, por pessoa + data, para sobreviver
+        # a reruns do Streamlit (upload de outro arquivo, clique em outro
+        # checkbox, etc.) — sem isso, o texto voltaria ao automático.
+        if "Movimentação Operacional" in df_exibir_editado.columns and "Colaboradora" in df_exibir_editado.columns:
+            for _, linha_editada in df_exibir_editado.iterrows():
+                nome_pessoa = linha_editada.get("Colaboradora")
+                texto_editado = linha_editada.get("Movimentação Operacional")
+                if nome_pessoa:
+                    st.session_state["mov_manual_overrides"][(data_str_atual, nome_pessoa)] = texto_seguro(texto_editado)
+
+        if st.button("🔄 Restaurar texto automático desta data", use_container_width=False):
+            chaves_para_remover = [
+                k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
+            ]
+            for k in chaves_para_remover:
+                del st.session_state["mov_manual_overrides"][k]
+            st.rerun()
     else:
         st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
 
