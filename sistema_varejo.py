@@ -25,6 +25,9 @@ Melhorias implementadas nesta versão em relação ao script original:
   9. Metas individuais opcionais por colaborador (além da meta do setor).
  10. Envio de e-mail direto por SMTP (opcional, configurável no sidebar).
  11. Exportação da tabela gerencial em Excel (.xlsx), além da imagem PNG.
+ 12. Tabela do detalhamento gerencial mais compacta (linhas menores, sem
+     alterar o conteúdo do texto), com opção de editá-la como planilha e de
+     ocultar/exibir Exemplares e SKUs individuais sob demanda.
 """
 
 import streamlit as st
@@ -168,20 +171,21 @@ st.markdown("""
         background: #0F172A;
         color: #FFFFFF;
         text-align: left;
-        padding: 12px 16px;
+        padding: 8px 14px;
         font-weight: 700;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.6px;
     }
     table.tabela-gerencial tbody td {
-        padding: 12px 16px;
+        padding: 6px 14px;
         border-top: 1px solid #EEF2F6;
         color: #0F172A;
-        vertical-align: top;
+        vertical-align: middle;
         white-space: normal;      /* permite quebra de linha */
         overflow-wrap: anywhere;  /* quebra palavras longas se precisar */
-        line-height: 1.45;
+        line-height: 1.3;
+        font-size: 0.84rem;
     }
     table.tabela-gerencial tbody tr:nth-child(even) { background: #FAFBFC; }
     table.tabela-gerencial tbody tr:hover { background: #F1F5F9; }
@@ -664,7 +668,9 @@ def renderizar_tabela_html(df):
     """Renderiza o DataFrame como uma tabela HTML própria (em vez do grid
     interativo do st.dataframe), permitindo bordas arredondadas e quebra de
     linha automática quando o texto de uma célula é longo (ex.: justificativas
-    de movimentação), em vez de cortar o conteúdo."""
+    de movimentação), em vez de cortar o conteúdo. As colunas passadas em `df`
+    definem o que aparece — para ocultar Exemplares/SKUs, basta não incluir
+    essas colunas no DataFrame antes de chamar esta função."""
     if df.empty:
         return "<div class='tabela-vazia'>Nenhum dado disponível.</div>"
 
@@ -867,12 +873,45 @@ if uploaded_file:
         data_gerencial.append(linha)
 
     df_real = pd.DataFrame(data_gerencial)
+
     st.markdown(
         "<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; "
         "font-weight: 700; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>",
         unsafe_allow_html=True,
     )
-    st.markdown(renderizar_tabela_html(df_real), unsafe_allow_html=True)
+
+    col_toggle1, col_toggle2 = st.columns(2)
+    with col_toggle1:
+        mostrar_individual = st.checkbox(
+            "👁️ Mostrar Exemplares/SKUs individuais", value=True, key="mostrar_individual"
+        )
+    with col_toggle2:
+        modo_edicao = st.checkbox(
+            "✏️ Editar tabela (como planilha)", value=False, key="modo_edicao_tabela"
+        )
+
+    colunas_ocultaveis = ["Exemplares", "SKUs"]
+    if mostrar_individual:
+        df_exibir = df_real.copy()
+    else:
+        df_exibir = df_real.drop(columns=[c for c in colunas_ocultaveis if c in df_real.columns])
+
+    if modo_edicao:
+        df_exibir_editado = st.data_editor(
+            df_exibir,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            key="editor_tabela_gerencial",
+        )
+        # Reincorpora as edições feitas na grade de volta ao df_real completo,
+        # preservando as colunas que estiverem ocultas no momento (ex.: se
+        # Exemplares/SKUs estiverem escondidos, seus valores originais não são
+        # perdidos — só as colunas visíveis são atualizadas com o que foi editado).
+        for col in df_exibir_editado.columns:
+            df_real[col] = df_exibir_editado[col].values
+    else:
+        st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
 
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
