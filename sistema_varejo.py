@@ -376,18 +376,36 @@ def formatar_hora_editor(valor):
         texto = valor.strip()
         if not texto:
             return ""
-        for fmt in ("%H:%M:%S", "%H:%M"):
+        for fmt in ("%H:%M:%S.%f", "%H:%M:%S", "%H:%M"):
             try:
                 return datetime.strptime(texto, fmt).strftime("%Hh%M")
             except ValueError:
                 continue
-        return texto  # formato não reconhecido: mantém como veio, em vez de sumir
+        try:
+            # Cobre variações não previstas acima (ex.: string ISO completa).
+            return pd.to_datetime(texto).strftime("%Hh%M")
+        except Exception:
+            return texto  # formato não reconhecido: mantém como veio, em vez de sumir
     if hasattr(valor, "strftime"):
         try:
             return valor.strftime("%Hh%M")
         except Exception:
             return ""
     return str(valor).strip()
+
+
+def texto_seguro(valor):
+    """Converte o valor de uma célula de texto vinda do st.data_editor para
+    string, tratando None/NaN como vazio — evita AttributeError quando a
+    célula fica vazia e volta como float('nan') em vez de None ou ''."""
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(valor)
 
 
 # =============================================================================
@@ -522,7 +540,7 @@ for cargo, integrantes in EQUIPE.items():
             for _, linha in editado.iterrows():
                 sai = linha.get("Saída")
                 ret = linha.get("Retorno")
-                loc = linha.get("Local") or ""
+                loc = texto_seguro(linha.get("Local"))
                 sai_txt = formatar_hora_editor(sai)
                 ret_txt = formatar_hora_editor(ret)
                 if sai_txt or ret_txt or loc.strip():
