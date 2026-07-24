@@ -55,6 +55,7 @@ import matplotlib.patches as mpatches
 # 0. CONSTANTES DE ARQUIVO
 # =============================================================================
 HIST_PATH = "historico_producao.csv"
+MOV_OVERRIDES_PATH = "movimentacoes_manuais.json"  # texto livre digitado na coluna Movimentação Operacional
 
 # (constantes/função de senha removidas junto com o login — ver comentário
 # na seção 2 abaixo caso queira reativar o acesso restrito no futuro)
@@ -306,12 +307,6 @@ DEFAULT_EQUIPE = {
 if "equipe_config" not in st.session_state:
     st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))  # cópia profunda
 
-if "mov_manual_overrides" not in st.session_state:
-    # Guarda o texto digitado à mão na coluna "Movimentação Operacional",
-    # por pessoa e por data, para que não se perca a cada rerun do Streamlit.
-    st.session_state["mov_manual_overrides"] = {}
-
-
 def construir_estruturas_equipe(config):
     """A partir do dicionário de configuração da equipe, monta as estruturas
     usadas pelo resto do app: lista de cargos->nomes, lista geral de nomes,
@@ -402,6 +397,32 @@ def formatar_hora_editor(valor):
     return str(valor).strip()
 
 
+def carregar_overrides_disco():
+    """Carrega do disco o texto livre já salvo em 'Movimentação Operacional'
+    (por data + pessoa). Assim, mesmo se a página for atualizada (F5) — o que
+    zera o st.session_state — o texto digitado não se perde, desde que o
+    arquivo continue no mesmo servidor."""
+    if not os.path.exists(MOV_OVERRIDES_PATH):
+        return {}
+    try:
+        with open(MOV_OVERRIDES_PATH, "r", encoding="utf-8") as f:
+            bruto = json.load(f)
+        return {tuple(chave.split("||", 1)): texto for chave, texto in bruto.items()}
+    except Exception:
+        return {}
+
+
+def salvar_overrides_disco(overrides):
+    """Grava no disco o texto livre digitado, para persistir entre reruns e
+    também entre atualizações completas da página (F5)."""
+    try:
+        bruto = {f"{data}||{nome}": texto for (data, nome), texto in overrides.items()}
+        with open(MOV_OVERRIDES_PATH, "w", encoding="utf-8") as f:
+            json.dump(bruto, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # ambiente sem permissão de escrita: segue funcionando só com session_state
+
+
 def texto_seguro(valor):
     """Converte o valor de uma célula de texto vinda do st.data_editor para
     string, tratando None/NaN como vazio — evita AttributeError quando a
@@ -414,6 +435,14 @@ def texto_seguro(valor):
     except (TypeError, ValueError):
         pass
     return str(valor)
+
+
+if "mov_manual_overrides" not in st.session_state:
+    # Guarda o texto digitado à mão na coluna "Movimentação Operacional",
+    # por pessoa e por data. Carrega primeiro o que já estiver salvo em disco
+    # (sobrevive a F5 / nova aba) e, a partir daí, também é atualizado a cada
+    # edição para não se perder ao mexer em outro campo (ex.: horários).
+    st.session_state["mov_manual_overrides"] = carregar_overrides_disco()
 
 
 # =============================================================================
@@ -986,7 +1015,9 @@ if uploaded_file:
         st.caption(
             "✍️ A coluna **Movimentação Operacional** é livre — escreva o que quiser. "
             "As demais colunas ficam bloqueadas aqui para não conflitar com os dados da "
-            "planilha; o texto digitado fica salvo para esta data mesmo se você atualizar a página."
+            "planilha. O que você digitar é salvo automaticamente (por pessoa e por data) "
+            "assim que sai do campo — pode mexer nos horários no sidebar ou até atualizar "
+            "a página (F5) que o texto continua lá."
         )
 
         colunas_bloqueadas = [c for c in df_exibir.columns if c != "Movimentação Operacional"]
@@ -1017,11 +1048,21 @@ if uploaded_file:
         # a reruns do Streamlit (upload de outro arquivo, clique em outro
         # checkbox, etc.) — sem isso, o texto voltaria ao automático.
         if "Movimentação Operacional" in df_exibir_editado.columns and "Colaboradora" in df_exibir_editado.columns:
+            houve_alteracao = False
             for _, linha_editada in df_exibir_editado.iterrows():
                 nome_pessoa = linha_editada.get("Colaboradora")
-                texto_editado = linha_editada.get("Movimentação Operacional")
-                if nome_pessoa:
-                    st.session_state["mov_manual_overrides"][(data_str_atual, nome_pessoa)] = texto_seguro(texto_editado)
+                texto_editado = texto_seguro(linha_editada.get("Movimentação Operacional"))
+                if not nome_pessoa:
+                    continue
+                chave = (data_str_atual, nome_pessoa)
+                if st.session_state["mov_manual_overrides"].get(chave) != texto_editado:
+                    houve_alteracao = True
+                st.session_state["mov_manual_overrides"][chave] = texto_editado
+            if houve_alteracao:
+                # Grava em disco a cada alteração, para não perder nada mesmo
+                # se a página for atualizada (F5) ou se você mexer em outro
+                # campo (ex.: horários no sidebar) antes de terminar de escrever.
+                salvar_overrides_disco(st.session_state["mov_manual_overrides"])
 
         if st.button("🔄 Restaurar texto automático desta data", use_container_width=False):
             chaves_para_remover = [
@@ -1029,6 +1070,7 @@ if uploaded_file:
             ]
             for k in chaves_para_remover:
                 del st.session_state["mov_manual_overrides"][k]
+            salvar_overrides_disco(st.session_state["mov_manual_overrides"])
             st.rerun()
     else:
         st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
