@@ -851,10 +851,24 @@ if uploaded_file:
                 continue
 
             historico_justificativas = []
-            for idx, m in enumerate(mov["movimentacoes"]):
-                if m["sai"].strip():
-                    prefixo = "Encaminhada" if idx == 0 else "encaminhada"
-                    historico_justificativas.append(f"{prefixo} ao {m['loc']} das {m['sai']} às {m['ret']}")
+            for m in mov["movimentacoes"]:
+                sai, ret, loc = m["sai"].strip(), m["ret"].strip(), m["loc"].strip()
+                if not (sai or ret or loc):
+                    continue  # linha em branco na tabela de movimentação: ignora
+
+                partes = []
+                if loc:
+                    partes.append(f"ao {loc}")
+                if sai and ret:
+                    partes.append(f"das {sai} às {ret}")
+                elif sai:
+                    partes.append(f"a partir das {sai}")
+                elif ret:
+                    partes.append(f"até às {ret}")
+
+                prefixo = "Encaminhada" if not historico_justificativas else "encaminhada"
+                complemento = " ".join(partes) if partes else "(sem horário/local informado)"
+                historico_justificativas.append(f"{prefixo} {complemento}")
 
             justificativa_texto = (
                 " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
