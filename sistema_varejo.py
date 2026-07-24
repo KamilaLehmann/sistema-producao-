@@ -171,21 +171,29 @@ st.markdown("""
         background: #0F172A;
         color: #FFFFFF;
         text-align: left;
-        padding: 8px 14px;
-        font-weight: 700;
-        font-size: 0.72rem;
+        padding: 9px 14px;
+        font-weight: 600;
+        font-size: 0.78rem;
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: 0.3px;
     }
     table.tabela-gerencial tbody td {
         padding: 6px 14px;
         border-top: 1px solid #EEF2F6;
         color: #0F172A;
         vertical-align: middle;
-        white-space: normal;      /* permite quebra de linha */
-        overflow-wrap: anywhere;  /* quebra palavras longas se precisar */
+        white-space: normal;      /* permite quebra de linha nas colunas de texto livre */
+        overflow-wrap: break-word;
         line-height: 1.3;
-        font-size: 0.84rem;
+        font-size: 0.86rem;
+    }
+    /* Cargo e Colaboradora são textos curtos/categóricos: nunca cortam no
+       meio da palavra, ficam sempre em uma linha só. */
+    table.tabela-gerencial td:nth-child(1),
+    table.tabela-gerencial td:nth-child(2),
+    table.tabela-gerencial th:nth-child(1),
+    table.tabela-gerencial th:nth-child(2) {
+        white-space: nowrap;
     }
     table.tabela-gerencial tbody tr:nth-child(even) { background: #FAFBFC; }
     table.tabela-gerencial tbody tr:hover { background: #F1F5F9; }
@@ -675,8 +683,8 @@ def renderizar_tabela_html(df):
         return "<div class='tabela-vazia'>Nenhum dado disponível.</div>"
 
     larguras = {
-        "Cargo": "10%",
-        "Colaboradora": "16%",
+        "Cargo": "13%",
+        "Colaboradora": "17%",
         "Exemplares": "10%",
         "SKUs": "8%",
         "Meta Individual": "11%",
