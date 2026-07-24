@@ -1015,9 +1015,9 @@ if uploaded_file:
         st.caption(
             "✍️ A coluna **Movimentação Operacional** é livre — escreva o que quiser. "
             "As demais colunas ficam bloqueadas aqui para não conflitar com os dados da "
-            "planilha. O que você digitar é salvo automaticamente (por pessoa e por data) "
-            "assim que sai do campo — pode mexer nos horários no sidebar ou até atualizar "
-            "a página (F5) que o texto continua lá."
+            "planilha. O texto tenta salvar sozinho ao sair do campo, mas para garantir "
+            "que nada se perca clique em **💾 Salvar agora** antes de mexer nos horários "
+            "no sidebar ou atualizar a página."
         )
 
         colunas_bloqueadas = [c for c in df_exibir.columns if c != "Movimentação Operacional"]
@@ -1047,31 +1047,43 @@ if uploaded_file:
         # Persiste o texto livre digitado, por pessoa + data, para sobreviver
         # a reruns do Streamlit (upload de outro arquivo, clique em outro
         # checkbox, etc.) — sem isso, o texto voltaria ao automático.
-        if "Movimentação Operacional" in df_exibir_editado.columns and "Colaboradora" in df_exibir_editado.columns:
-            houve_alteracao = False
-            for _, linha_editada in df_exibir_editado.iterrows():
-                nome_pessoa = linha_editada.get("Colaboradora")
-                texto_editado = texto_seguro(linha_editada.get("Movimentação Operacional"))
-                if not nome_pessoa:
-                    continue
-                chave = (data_str_atual, nome_pessoa)
-                if st.session_state["mov_manual_overrides"].get(chave) != texto_editado:
-                    houve_alteracao = True
-                st.session_state["mov_manual_overrides"][chave] = texto_editado
-            if houve_alteracao:
-                # Grava em disco a cada alteração, para não perder nada mesmo
-                # se a página for atualizada (F5) ou se você mexer em outro
-                # campo (ex.: horários no sidebar) antes de terminar de escrever.
+        def persistir_movimentacao_editada(df_editado):
+            """Grava o texto atual da grade (session_state + disco). Retorna
+            quantas linhas foram gravadas."""
+            total_gravado = 0
+            if "Movimentação Operacional" in df_editado.columns and "Colaboradora" in df_editado.columns:
+                for _, linha_editada in df_editado.iterrows():
+                    nome_pessoa = linha_editada.get("Colaboradora")
+                    texto_editado = texto_seguro(linha_editada.get("Movimentação Operacional"))
+                    if not nome_pessoa:
+                        continue
+                    chave = (data_str_atual, nome_pessoa)
+                    st.session_state["mov_manual_overrides"][chave] = texto_editado
+                    total_gravado += 1
                 salvar_overrides_disco(st.session_state["mov_manual_overrides"])
+            return total_gravado
 
-        if st.button("🔄 Restaurar texto automático desta data", use_container_width=False):
-            chaves_para_remover = [
-                k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
-            ]
-            for k in chaves_para_remover:
-                del st.session_state["mov_manual_overrides"][k]
-            salvar_overrides_disco(st.session_state["mov_manual_overrides"])
-            st.rerun()
+        # Tentativa automática (assim que você sai do campo, o Streamlit já
+        # reprocessa a página e isso roda sozinho) — mas, como o momento exato
+        # em que o navegador confirma a edição pode variar, use o botão
+        # "💾 Salvar" ao lado sempre que quiser ter certeza de que nada foi
+        # perdido, sem precisar sair do campo ou mexer em outra coisa antes.
+        persistir_movimentacao_editada(df_exibir_editado)
+
+        col_salvar, col_restaurar_texto = st.columns([1, 2])
+        with col_salvar:
+            if st.button("💾 Salvar agora", use_container_width=True, type="primary"):
+                qtd = persistir_movimentacao_editada(df_exibir_editado)
+                st.success(f"✅ Salvo! ({qtd} linha(s) gravada(s) para {data_formatada})")
+        with col_restaurar_texto:
+            if st.button("🔄 Restaurar texto automático desta data", use_container_width=True):
+                chaves_para_remover = [
+                    k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
+                ]
+                for k in chaves_para_remover:
+                    del st.session_state["mov_manual_overrides"][k]
+                salvar_overrides_disco(st.session_state["mov_manual_overrides"])
+                st.rerun()
     else:
         st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
 
