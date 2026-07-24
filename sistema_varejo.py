@@ -34,6 +34,7 @@ from datetime import datetime, time as dtime
 import io
 import os
 import json
+import html
 import unicodedata
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -146,6 +147,51 @@ st.markdown("""
         border: 1px solid #E5E7EB;
         border-radius: 10px;
         overflow: hidden;
+    }
+
+    /* Tabela gerencial em HTML (bordas arredondadas + quebra de texto) */
+    .tabela-wrapper {
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.07);
+        margin-bottom: 16px;
+    }
+    table.tabela-gerencial {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.86rem;
+        table-layout: fixed;
+    }
+    table.tabela-gerencial thead th {
+        background: #0F172A;
+        color: #FFFFFF;
+        text-align: left;
+        padding: 12px 16px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+    }
+    table.tabela-gerencial tbody td {
+        padding: 12px 16px;
+        border-top: 1px solid #EEF2F6;
+        color: #0F172A;
+        vertical-align: top;
+        white-space: normal;      /* permite quebra de linha */
+        overflow-wrap: anywhere;  /* quebra palavras longas se precisar */
+        line-height: 1.45;
+    }
+    table.tabela-gerencial tbody tr:nth-child(even) { background: #FAFBFC; }
+    table.tabela-gerencial tbody tr:hover { background: #F1F5F9; }
+    .tabela-vazia {
+        padding: 18px 16px;
+        color: #64748B;
+        font-size: 0.9rem;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        background: #FFFFFF;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -614,6 +660,54 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     return buffer.getvalue()
 
 
+def renderizar_tabela_html(df):
+    """Renderiza o DataFrame como uma tabela HTML própria (em vez do grid
+    interativo do st.dataframe), permitindo bordas arredondadas e quebra de
+    linha automática quando o texto de uma célula é longo (ex.: justificativas
+    de movimentação), em vez de cortar o conteúdo."""
+    if df.empty:
+        return "<div class='tabela-vazia'>Nenhum dado disponível.</div>"
+
+    larguras = {
+        "Cargo": "10%",
+        "Colaboradora": "16%",
+        "Exemplares": "10%",
+        "SKUs": "8%",
+        "Meta Individual": "11%",
+        "% Meta Individual": "11%",
+        # "Movimentação Operacional" fica sem largura fixa -> ocupa o restante
+    }
+
+    colunas = list(df.columns)
+    colgroup = "".join(
+        f'<col style="width:{larguras[c]}">' if c in larguras else "<col>"
+        for c in colunas
+    )
+    cabecalho = "".join(f"<th>{html.escape(str(c))}</th>" for c in colunas)
+
+    linhas_html = []
+    for _, linha in df.iterrows():
+        celulas = []
+        for c in colunas:
+            valor = linha[c]
+            if isinstance(valor, (int,)) or (isinstance(valor, float) and float(valor).is_integer()):
+                texto = f"{int(valor):,}".replace(",", ".") if c in ("Exemplares", "SKUs", "Meta Individual") else str(valor)
+            else:
+                texto = "" if valor is None else str(valor)
+            celulas.append(f"<td>{html.escape(texto)}</td>")
+        linhas_html.append(f"<tr>{''.join(celulas)}</tr>")
+
+    return f"""
+    <div class="tabela-wrapper">
+      <table class="tabela-gerencial">
+        <colgroup>{colgroup}</colgroup>
+        <thead><tr>{cabecalho}</tr></thead>
+        <tbody>{''.join(linhas_html)}</tbody>
+      </table>
+    </div>
+    """
+
+
 def gerar_excel_gerencial(df_real):
     """Gera um .xlsx com a tabela gerencial completa (incluindo Exemplares e
     SKUs individuais), para uso interno de análise — diferente da imagem/
@@ -778,7 +872,7 @@ if uploaded_file:
         "font-weight: 700; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>",
         unsafe_allow_html=True,
     )
-    st.dataframe(df_real, use_container_width=True, hide_index=True)
+    st.markdown(renderizar_tabela_html(df_real), unsafe_allow_html=True)
 
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
