@@ -210,12 +210,10 @@ st.markdown("""
 
 # Logo leve em SVG (substitui o PNG base64 do arquivo original — ver nota no
 # topo do arquivo sobre como restaurar o logo original caso deseje).
-LOGO_REALBRAS_SVG = """
-<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
+LOGO_REALBRAS_SVG = """<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
   <rect width="34" height="34" rx="8" fill="#0F172A"/>
   <path d="M9 24V10h7.5c3.6 0 5.8 1.8 5.8 4.9 0 2.1-1.1 3.6-3 4.3l3.4 4.8h-3.4l-3-4.3H12V24H9zm3-6.7h4.2c1.8 0 2.8-.8 2.8-2.3s-1-2.3-2.8-2.3H12v4.6z" fill="#FFFFFF"/>
-</svg>
-"""
+</svg>""".strip()
 
 
 # =============================================================================
@@ -252,9 +250,8 @@ LOGO_REALBRAS_SVG = """
 # =============================================================================
 st.markdown(f"""
 <div style='display:flex; align-items:center; gap:10px; margin-bottom:4px;'>
-    {LOGO_REALBRAS_SVG}
-    <h1 style='font-family: "Sora", sans-serif; font-weight:800; letter-spacing:-0.5px;
-    color: #0F172A; margin:0;'>📊 Painel Executivo de Produção</h1>
+{LOGO_REALBRAS_SVG}
+<h1 style='font-family: "Sora", sans-serif; font-weight:800; letter-spacing:-0.5px; color: #0F172A; margin:0;'>📊 Painel Executivo de Produção</h1>
 </div>
 <p style='text-align:left; font-family: "Inter", sans-serif; color:#64748B; font-size:0.95rem; margin-top:4px; margin-bottom:28px;'>Varejo · acompanhamento diário de produtividade</p>
 """, unsafe_allow_html=True)
@@ -358,6 +355,39 @@ def parse_hora_str(valor_str):
         return dtime(int(h), int(m))
     except Exception:
         return None
+
+
+def formatar_hora_editor(valor):
+    """Converte o valor de uma célula de hora vinda do st.data_editor para o
+    texto 'HHhMM'. Não assume um único tipo de retorno (datetime.time,
+    pandas.Timestamp ou string 'HH:MM'/'HH:MM:SS' já apareceram dependendo da
+    versão do Streamlit/pandas) — se não conseguir reconhecer o formato,
+    devolve vazio em vez de derrubar o app."""
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, (dtime, datetime)):
+        return valor.strftime("%Hh%M")
+    if isinstance(valor, str):
+        texto = valor.strip()
+        if not texto:
+            return ""
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(texto, fmt).strftime("%Hh%M")
+            except ValueError:
+                continue
+        return texto  # formato não reconhecido: mantém como veio, em vez de sumir
+    if hasattr(valor, "strftime"):
+        try:
+            return valor.strftime("%Hh%M")
+        except Exception:
+            return ""
+    return str(valor).strip()
 
 
 # =============================================================================
@@ -493,8 +523,8 @@ for cargo, integrantes in EQUIPE.items():
                 sai = linha.get("Saída")
                 ret = linha.get("Retorno")
                 loc = linha.get("Local") or ""
-                sai_txt = sai.strftime("%Hh%M") if isinstance(sai, dtime) else ""
-                ret_txt = ret.strftime("%Hh%M") if isinstance(ret, dtime) else ""
+                sai_txt = formatar_hora_editor(sai)
+                ret_txt = formatar_hora_editor(ret)
                 if sai_txt or ret_txt or loc.strip():
                     movimentacoes_op.append({"sai": sai_txt, "ret": ret_txt, "loc": loc})
 
