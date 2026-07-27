@@ -401,6 +401,42 @@ def formatar_hora_editor(valor):
     return str(valor).strip()
 
 
+def hora_para_iso(valor):
+    """Converte o valor de uma célula de hora do st.data_editor para o
+    formato 'HH:MM' (compatível com parse_hora_str). Usada para PERSISTIR o
+    horário salvo — diferente de formatar_hora_editor, que gera o texto
+    'HHhMM' usado só para exibição na Movimentação Operacional. Usar o
+    formato errado aqui fazia o horário salvo "sumir" ao ser recarregado."""
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, (dtime, datetime)):
+        return valor.strftime("%H:%M")
+    if isinstance(valor, str):
+        texto = valor.strip()
+        if not texto:
+            return ""
+        for fmt in ("%H:%M:%S.%f", "%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(texto, fmt).strftime("%H:%M")
+            except ValueError:
+                continue
+        try:
+            return pd.to_datetime(texto).strftime("%H:%M")
+        except Exception:
+            return ""
+    if hasattr(valor, "strftime"):
+        try:
+            return valor.strftime("%H:%M")
+        except Exception:
+            return ""
+    return ""
+
+
 def carregar_overrides_disco():
     """Carrega do disco o texto livre já salvo em 'Movimentação Operacional'
     (por data + pessoa). Assim, mesmo se a página for atualizada (F5) — o que
@@ -638,10 +674,14 @@ for cargo, integrantes in EQUIPE.items():
             col_salvar_hora, col_resetar_hora = st.sidebar.columns(2)
             with col_salvar_hora:
                 if st.button("💾 Salvar", key=f"salvar_horario_{op}", use_container_width=True):
-                    st.session_state["horarios_salvos"][op] = [
-                        {"saida": m["sai"], "retorno": m["ret"], "local": m["loc"]}
-                        for m in movimentacoes_op
-                    ]
+                    linhas_para_salvar = []
+                    for _, linha_ed in editado.iterrows():
+                        sai_iso = hora_para_iso(linha_ed.get("Saída"))
+                        ret_iso = hora_para_iso(linha_ed.get("Retorno"))
+                        loc_ed = texto_seguro(linha_ed.get("Local"))
+                        if sai_iso or ret_iso or loc_ed.strip():
+                            linhas_para_salvar.append({"saida": sai_iso, "retorno": ret_iso, "local": loc_ed})
+                    st.session_state["horarios_salvos"][op] = linhas_para_salvar
                     salvar_horarios_disco(st.session_state["horarios_salvos"])
                     st.sidebar.success(f"Horário de {op} salvo.")
             with col_resetar_hora:
@@ -984,7 +1024,16 @@ if uploaded_file:
         is_ausente = n in faltas_selecionadas
 
         if is_ausente:
-            qtd_exemplares, qtd_skus = 0, 0
+            # Mesmo ausente, se a pessoa já tiver produção registrada na
+            # planilha (ex.: trabalhou parte do dia antes da falta), mostra o
+            # valor real em vez de zerar — 0/0 só aparece se ela realmente
+            # não tiver nenhum registro na planilha.
+            if not df_filtrado.empty:
+                df_func = df_filtrado[df_filtrado["USUARIO"] == nome_excel(n, ALIAS_EXCEL)]
+                qtd_exemplares = int(df_func["TOTAL"].sum())
+                qtd_skus = int(len(df_func))
+            else:
+                qtd_exemplares, qtd_skus = 0, 0
             motivo_individual = dict_motivos_falta.get(n, "Falta administrativa")
             justificativa_texto = f"Ausente. Motivo: {motivo_individual}."
             cargo_atual = CARGO_POR_NOME.get(n, "Operador(a)")
