@@ -1005,6 +1005,7 @@ if uploaded_file:
     data_str_atual = data_produtividade.strftime("%Y-%m-%d")
 
     data_gerencial = []
+    textos_automaticos_por_pessoa = {}  # nome -> texto gerado automaticamente (antes do override manual), usado para o autosave do modo edição não "engessar" texto que ninguém editou de fato
     for n in NOMES_LISTA:
         if n in remover_do_setor:
             continue
@@ -1058,9 +1059,20 @@ if uploaded_file:
                 " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             )
 
+        # A ausência sempre tem prioridade sobre um texto manual salvo
+        # anteriormente. Sem isso, um texto de movimentação salvo enquanto a
+        # pessoa ainda não estava ausente (ex.: pelo autosave do modo
+        # "Editar tabela") continuava "grudado" e escondia o aviso de
+        # falta, mesmo com a pessoa corretamente marcada como ausente.
         override_chave = (data_str_atual, n)
-        if override_chave in st.session_state["mov_manual_overrides"]:
-            justificativa_texto = st.session_state["mov_manual_overrides"][override_chave]
+        if is_ausente:
+            if override_chave in st.session_state["mov_manual_overrides"]:
+                del st.session_state["mov_manual_overrides"][override_chave]
+                salvar_overrides_disco(st.session_state["mov_manual_overrides"])
+        else:
+            textos_automaticos_por_pessoa[n] = justificativa_texto
+            if override_chave in st.session_state["mov_manual_overrides"]:
+                justificativa_texto = st.session_state["mov_manual_overrides"][override_chave]
 
         linha = {
             "Cargo": cargo_atual,
@@ -1135,6 +1147,13 @@ if uploaded_file:
             df_real[col] = df_exibir_editado[col].values
 
         def persistir_movimentacao_editada(df_editado):
+            """Grava como override manual apenas o texto que realmente foi
+            editado à mão (diferente do texto automático daquela pessoa nesta
+            data). Se o texto exibido for igual ao automático — por exemplo,
+            porque a pessoa foi marcada como ausente e o texto na tela
+            passou a ser "Ausente..." de novo — qualquer override antigo é
+            removido em vez de recriado, evitando que um texto de
+            movimentação antigo "grude" e esconda mudanças como a ausência."""
             total_gravado = 0
             if "Movimentação Operacional" in df_editado.columns and "Colaboradora" in df_editado.columns:
                 for _, linha_editada in df_editado.iterrows():
@@ -1143,8 +1162,13 @@ if uploaded_file:
                     if not nome_pessoa:
                         continue
                     chave = (data_str_atual, nome_pessoa)
-                    st.session_state["mov_manual_overrides"][chave] = texto_editado
-                    total_gravado += 1
+                    texto_automatico = textos_automaticos_por_pessoa.get(nome_pessoa)
+                    if texto_automatico is not None and texto_editado == texto_automatico:
+                        # Igual ao automático: não é uma edição manual de verdade.
+                        st.session_state["mov_manual_overrides"].pop(chave, None)
+                    else:
+                        st.session_state["mov_manual_overrides"][chave] = texto_editado
+                        total_gravado += 1
                 salvar_overrides_disco(st.session_state["mov_manual_overrides"])
             return total_gravado
 
