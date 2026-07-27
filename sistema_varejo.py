@@ -802,9 +802,10 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     pronta para copiar ou baixar.
 
     O texto de "Movimentação Operacional" é quebrado em várias linhas quando
-    é longo (em vez de ficar cortado numa única linha), e a altura de cada
-    linha da tabela (e da própria imagem) se ajusta conforme a quantidade de
-    linhas de texto de cada pessoa, para o conteúdo sempre aparecer inteiro.
+    é longo (em vez de ficar cortado numa única linha). A altura de cada
+    linha da tabela é calculada em POLEGADAS (fixa por linha de texto, não
+    "esticada" para preencher um espaço maior), para o conteúdo aparecer
+    inteiro sem as linhas ficarem grossas demais quando o texto é curto.
     """
     colunas_relatorio = ["Cargo", "Colaboradora", "Movimentação Operacional"]
     df_relatorio = df_real[colunas_relatorio].copy() if not df_real.empty else df_real
@@ -820,15 +821,37 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
             linhas_por_registro.append(len(linhas_texto))
         df_relatorio["Movimentação Operacional"] = textos_quebrados
 
+    # --- Medidas fixas em polegadas (não dependem da quantidade de linhas) ---
+    MARGEM_SUPERIOR_IN = 0.18
+    ALTURA_TITULO_IN = 0.30
+    ESPACO_TITULO_CARDS_IN = 0.20
+    ALTURA_CARDS_IN = 1.05
+    ESPACO_CARDS_TABELA_IN = 0.25
+    ALTURA_CABECALHO_TABELA_IN = 0.36
+    ALTURA_LINHA_TABELA_IN = 0.24  # por linha de texto dentro da célula
+    MARGEM_INFERIOR_IN = 0.12
+
     total_linhas_texto = sum(max(n, 1) for n in linhas_por_registro) if linhas_por_registro else 1
-    altura_fig = 3.6 + 0.28 * total_linhas_texto
+    altura_tabela_in = ALTURA_CABECALHO_TABELA_IN + ALTURA_LINHA_TABELA_IN * total_linhas_texto
+
+    altura_fig = (
+        MARGEM_SUPERIOR_IN + ALTURA_TITULO_IN + ESPACO_TITULO_CARDS_IN + ALTURA_CARDS_IN
+        + ESPACO_CARDS_TABELA_IN + altura_tabela_in + MARGEM_INFERIOR_IN
+    )
+
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
     fig.patch.set_facecolor("#FAFAFA")
 
-    fig.text(0.04, 0.975, "Painel Executivo de Produção", fontsize=18, fontweight="bold", color="#111827", va="top")
+    y_titulo = 1 - (MARGEM_SUPERIOR_IN / altura_fig)
+    fig.text(0.04, y_titulo, "Painel Executivo de Produção", fontsize=18, fontweight="bold", color="#111827", va="top")
+
+    y_cards_topo_in = altura_fig - MARGEM_SUPERIOR_IN - ALTURA_TITULO_IN - ESPACO_TITULO_CARDS_IN
+    y_cards_base_in = y_cards_topo_in - ALTURA_CARDS_IN
+    frac_cards_base = y_cards_base_in / altura_fig
+    frac_cards_altura = ALTURA_CARDS_IN / altura_fig
 
     def desenhar_card(x, largura, titulo, valor, sub, cor_accent):
-        ax = fig.add_axes([x, 0.68, largura, 0.20])
+        ax = fig.add_axes([x, frac_cards_base, largura, frac_cards_altura])
         ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
         card = mpatches.FancyBboxPatch(
             (0.01, 0.04), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.08",
@@ -849,7 +872,12 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     desenhar_card(0.52, 0.44, "TOTAL DE SKU", f"{total_skus:,}",
                   f"Meta Diária: {meta_skus:,}  ·  Atingido: {pct_skus:.1%}", "#0D9488")
 
-    ax = fig.add_axes([0.04, 0.03, 0.92, 0.58])
+    y_tabela_topo_in = y_cards_base_in - ESPACO_CARDS_TABELA_IN
+    y_tabela_base_in = MARGEM_INFERIOR_IN
+    frac_tabela_base = y_tabela_base_in / altura_fig
+    frac_tabela_altura = (y_tabela_topo_in - y_tabela_base_in) / altura_fig
+
+    ax = fig.add_axes([0.04, frac_tabela_base, 0.92, frac_tabela_altura])
     ax.axis("off")
 
     if not df_relatorio.empty:
@@ -863,11 +891,13 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         tabela.auto_set_font_size(False)
         tabela.set_fontsize(8.5)
 
-        # Altura de cada linha proporcional ao nº de linhas de texto que ela
-        # contém (linha com 1 linha de texto é "1 unidade", com 3 linhas de
-        # texto vira "3 unidades" etc.), para nenhuma célula ficar cortada.
-        unidades_totais = 1 + sum(max(n, 1) for n in linhas_por_registro)  # +1 do cabeçalho
-        altura_unidade = 1.0 / unidades_totais
+        # Como a altura desses "eixos" (ax) já foi calculada acima em
+        # polegadas para caber exatamente cabeçalho + linhas de texto, basta
+        # dividir 1.0 (altura total do eixo) na mesma proporção de polegadas
+        # de cada linha — isso preenche o espaço certinho, sem sobrar vão
+        # (linha "gorda") nem faltar espaço (texto cortado).
+        frac_por_linha_texto = ALTURA_LINHA_TABELA_IN / altura_tabela_in
+        frac_cabecalho = ALTURA_CABECALHO_TABELA_IN / altura_tabela_in
 
         for (row, col), cell in tabela.get_celld().items():
             cell.set_edgecolor("#EFEFEF")
@@ -876,10 +906,10 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
             if row == 0:
                 cell.set_facecolor("#111827")
                 cell.set_text_props(color="white", fontweight="bold")
-                cell.set_height(altura_unidade)
+                cell.set_height(frac_cabecalho)
             else:
                 cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#FAFAFA")
-                cell.set_height(altura_unidade * max(linhas_por_registro[row - 1], 1))
+                cell.set_height(frac_por_linha_texto * max(linhas_por_registro[row - 1], 1))
     else:
         ax.text(0, 0.9, "Nenhum dado disponível.", fontsize=9, color="#64748B")
 
