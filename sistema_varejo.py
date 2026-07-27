@@ -44,6 +44,7 @@ import io
 import os
 import json
 import html
+import textwrap
 import unicodedata
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -798,12 +799,29 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
                             meta_exemplares, meta_skus, df_real):
     """Gera uma imagem (PNG) com cards de KPI + tabela de detalhamento (sem os
     números individuais de Exemplares/SKUs, que a diretoria não precisa ver),
-    pronta para copiar ou baixar."""
-    colunas_relatorio = ["Cargo", "Colaboradora", "Movimentação Operacional"]
-    df_relatorio = df_real[colunas_relatorio] if not df_real.empty else df_real
+    pronta para copiar ou baixar.
 
-    n_linhas = max(len(df_relatorio), 1)
-    altura_fig = 3.5 + 0.35 * n_linhas
+    O texto de "Movimentação Operacional" é quebrado em várias linhas quando
+    é longo (em vez de ficar cortado numa única linha), e a altura de cada
+    linha da tabela (e da própria imagem) se ajusta conforme a quantidade de
+    linhas de texto de cada pessoa, para o conteúdo sempre aparecer inteiro.
+    """
+    colunas_relatorio = ["Cargo", "Colaboradora", "Movimentação Operacional"]
+    df_relatorio = df_real[colunas_relatorio].copy() if not df_real.empty else df_real
+
+    LARGURA_QUEBRA = 78  # nº aprox. de caracteres por linha na coluna de Movimentação
+    linhas_por_registro = []
+    if not df_relatorio.empty:
+        textos_quebrados = []
+        for texto in df_relatorio["Movimentação Operacional"]:
+            texto = "" if texto is None else str(texto)
+            linhas_texto = textwrap.wrap(texto, width=LARGURA_QUEBRA) or [""]
+            textos_quebrados.append("\n".join(linhas_texto))
+            linhas_por_registro.append(len(linhas_texto))
+        df_relatorio["Movimentação Operacional"] = textos_quebrados
+
+    total_linhas_texto = sum(max(n, 1) for n in linhas_por_registro) if linhas_por_registro else 1
+    altura_fig = 3.6 + 0.28 * total_linhas_texto
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
     fig.patch.set_facecolor("#FAFAFA")
 
@@ -844,15 +862,24 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         )
         tabela.auto_set_font_size(False)
         tabela.set_fontsize(8.5)
-        tabela.scale(1, 1.8)
+
+        # Altura de cada linha proporcional ao nº de linhas de texto que ela
+        # contém (linha com 1 linha de texto é "1 unidade", com 3 linhas de
+        # texto vira "3 unidades" etc.), para nenhuma célula ficar cortada.
+        unidades_totais = 1 + sum(max(n, 1) for n in linhas_por_registro)  # +1 do cabeçalho
+        altura_unidade = 1.0 / unidades_totais
 
         for (row, col), cell in tabela.get_celld().items():
             cell.set_edgecolor("#EFEFEF")
+            cell.PAD = 0.02
+            cell.get_text().set_verticalalignment("center")
             if row == 0:
                 cell.set_facecolor("#111827")
                 cell.set_text_props(color="white", fontweight="bold")
+                cell.set_height(altura_unidade)
             else:
                 cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#FAFAFA")
+                cell.set_height(altura_unidade * max(linhas_por_registro[row - 1], 1))
     else:
         ax.text(0, 0.9, "Nenhum dado disponível.", fontsize=9, color="#64748B")
 
