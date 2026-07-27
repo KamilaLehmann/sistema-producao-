@@ -34,6 +34,9 @@ Melhorias implementadas nesta versão em relação ao script original:
  14. Horários de Saída/Retorno/Local do sidebar agora podem ser salvos por
      pessoa (botão "💾 Salvar") para não precisar digitar de novo a cada vez
      que ela for movimentada, com botão "🔄 Resetar" para voltar ao padrão.
+ 15. E-mail agora é enviado em HTML, com a imagem do relatório embutida
+     diretamente no corpo (igual ao modelo mostrado pelo usuário), em vez de
+     ir só como anexo separado.
 """
 
 import streamlit as st
@@ -282,12 +285,6 @@ def normalizar(texto):
 # =============================================================================
 # 5. EQUIPE CONFIGURÁVEL (editável pela interface, sem precisar mexer no código)
 # =============================================================================
-# Cada pessoa é um dicionário com:
-#   nome            -> nome de exibição (obrigatório)
-#   alias_excel      -> como o nome aparece na planilha, se for diferente (opcional)
-#   meta_exemplares  -> meta individual diária de exemplares (opcional)
-#   saida_padrao / retorno_padrao / local_padrao -> pré-preenche a tabela de
-#                       movimentação quando a pessoa for marcada como movimentada (opcional)
 DEFAULT_EQUIPE = {
     "Líder": [
         {"nome": "Kamila Moraes", "alias_excel": "KAMILA"},
@@ -313,10 +310,6 @@ if "equipe_config" not in st.session_state:
     st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))  # cópia profunda
 
 def construir_estruturas_equipe(config):
-    """A partir do dicionário de configuração da equipe, monta as estruturas
-    usadas pelo resto do app: lista de cargos->nomes, lista geral de nomes,
-    mapa de alias do Excel, mapa de metas individuais e mapa de valores
-    padrão de movimentação."""
     equipe = {}
     nomes_lista = []
     alias_excel = {}
@@ -355,7 +348,6 @@ def nome_excel(nome, alias_map):
 
 
 def parse_hora_str(valor_str):
-    """Converte 'HH:MM' em datetime.time; retorna None se vazio/ inválido."""
     if not valor_str:
         return None
     try:
@@ -366,11 +358,6 @@ def parse_hora_str(valor_str):
 
 
 def formatar_hora_editor(valor):
-    """Converte o valor de uma célula de hora vinda do st.data_editor para o
-    texto 'HHhMM'. Não assume um único tipo de retorno (datetime.time,
-    pandas.Timestamp ou string 'HH:MM'/'HH:MM:SS' já apareceram dependendo da
-    versão do Streamlit/pandas) — se não conseguir reconhecer o formato,
-    devolve vazio em vez de derrubar o app."""
     if valor is None:
         return ""
     try:
@@ -390,10 +377,9 @@ def formatar_hora_editor(valor):
             except ValueError:
                 continue
         try:
-            # Cobre variações não previstas acima (ex.: string ISO completa).
             return pd.to_datetime(texto).strftime("%Hh%M")
         except Exception:
-            return texto  # formato não reconhecido: mantém como veio, em vez de sumir
+            return texto
     if hasattr(valor, "strftime"):
         try:
             return valor.strftime("%Hh%M")
@@ -403,11 +389,6 @@ def formatar_hora_editor(valor):
 
 
 def hora_para_iso(valor):
-    """Converte o valor de uma célula de hora do st.data_editor para o
-    formato 'HH:MM' (compatível com parse_hora_str). Usada para PERSISTIR o
-    horário salvo — diferente de formatar_hora_editor, que gera o texto
-    'HHhMM' usado só para exibição na Movimentação Operacional. Usar o
-    formato errado aqui fazia o horário salvo "sumir" ao ser recarregado."""
     if valor is None:
         return ""
     try:
@@ -439,10 +420,6 @@ def hora_para_iso(valor):
 
 
 def carregar_overrides_disco():
-    """Carrega do disco o texto livre já salvo em 'Movimentação Operacional'
-    (por data + pessoa). Assim, mesmo se a página for atualizada (F5) — o que
-    zera o st.session_state — o texto digitado não se perde, desde que o
-    arquivo continue no mesmo servidor."""
     if not os.path.exists(MOV_OVERRIDES_PATH):
         return {}
     try:
@@ -454,20 +431,15 @@ def carregar_overrides_disco():
 
 
 def salvar_overrides_disco(overrides):
-    """Grava no disco o texto livre digitado, para persistir entre reruns e
-    também entre atualizações completas da página (F5)."""
     try:
         bruto = {f"{data}||{nome}": texto for (data, nome), texto in overrides.items()}
         with open(MOV_OVERRIDES_PATH, "w", encoding="utf-8") as f:
             json.dump(bruto, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass  # ambiente sem permissão de escrita: segue funcionando só com session_state
+        pass
 
 
 def carregar_horarios_disco():
-    """Carrega do disco os horários (Saída/Retorno/Local) que o usuário já
-    salvou manualmente para cada pessoa na barra lateral, para não precisar
-    digitar de novo toda vez que ela for marcada como movimentada."""
     if not os.path.exists(HORARIOS_SALVOS_PATH):
         return {}
     try:
@@ -478,19 +450,14 @@ def carregar_horarios_disco():
 
 
 def salvar_horarios_disco(horarios):
-    """Grava no disco os horários salvos por pessoa, para persistir entre
-    reruns e também entre atualizações completas da página (F5)."""
     try:
         with open(HORARIOS_SALVOS_PATH, "w", encoding="utf-8") as f:
             json.dump(horarios, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass  # ambiente sem permissão de escrita: segue funcionando só com session_state
+        pass
 
 
 def texto_seguro(valor):
-    """Converte o valor de uma célula de texto vinda do st.data_editor para
-    string, tratando None/NaN como vazio — evita AttributeError quando a
-    célula fica vazia e volta como float('nan') em vez de None ou ''."""
     if valor is None:
         return ""
     try:
@@ -502,17 +469,9 @@ def texto_seguro(valor):
 
 
 if "mov_manual_overrides" not in st.session_state:
-    # Guarda o texto digitado à mão na coluna "Movimentação Operacional",
-    # por pessoa e por data. Carrega primeiro o que já estiver salvo em disco
-    # (sobrevive a F5 / nova aba) e, a partir daí, também é atualizado a cada
-    # edição para não se perder ao mexer em outro campo (ex.: horários).
     st.session_state["mov_manual_overrides"] = carregar_overrides_disco()
 
 if "horarios_salvos" not in st.session_state:
-    # Horários (Saída/Retorno/Local) que o usuário já confirmou salvar para
-    # cada pessoa, sobrepondo o horário padrão configurado em "saida_padrao"
-    # / "retorno_padrao" / "local_padrao". Começa vazio (nada pré-salvo) e só
-    # passa a existir quando alguém clicar em "💾 Salvar" no sidebar.
     st.session_state["horarios_salvos"] = carregar_horarios_disco()
 
 
@@ -529,7 +488,6 @@ data_formatada = data_produtividade.strftime("%d/%m")
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-# --- Configuração de equipe editável -----------------------------------------
 with st.sidebar.expander("⚙️ Configurar Equipe (avançado)"):
     st.caption(
         "Edite o JSON abaixo para adicionar/remover pessoas, corrigir o nome "
@@ -557,7 +515,7 @@ with st.sidebar.expander("⚙️ Configurar Equipe (avançado)"):
     with col_restaurar:
         if st.button("↩️ Restaurar padrão", use_container_width=True):
             st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))
-            st.session_state.pop("texto_config_equipe", None)  # força a caixa de texto a recarregar o padrão
+            st.session_state.pop("texto_config_equipe", None)
             st.rerun()
 
 EQUIPE, NOMES_LISTA, ALIAS_EXCEL, METAS_INDIVIDUAIS, DEFAULTS_MOV, CARGO_POR_NOME = construir_estruturas_equipe(
@@ -620,9 +578,6 @@ for cargo, integrantes in EQUIPE.items():
         elif is_movimentado:
             st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
 
-            # Se já existir um horário salvo manualmente para esta pessoa, ele
-            # tem prioridade sobre o horário padrão configurado em "⚙️ Configurar
-            # Equipe" — assim, uma vez salvo, não precisa digitar de novo.
             salvo = st.session_state["horarios_salvos"].get(op)
             if salvo:
                 linha_inicial = pd.DataFrame(
@@ -717,19 +672,34 @@ with st.sidebar.expander("✉️ Configuração de E-mail (SMTP)"):
     destinatarios_texto = st.text_input("Destinatários (separados por vírgula):", key="smtp_destinatarios")
 
 
-def enviar_email_relatorio(assunto, corpo_texto, imagem_bytes, nome_imagem):
+def enviar_email_relatorio(assunto, corpo_texto, corpo_html, imagem_bytes, nome_imagem, cid_imagem):
+    """Envia o relatório por e-mail em HTML, com a imagem do painel embutida
+    diretamente no corpo da mensagem (via Content-ID) — igual ao modelo em
+    que o texto vem primeiro e a imagem aparece logo abaixo de
+    'Observações do Dia:', em vez de só como anexo separado.
+
+    A mensagem é multipart/alternative (texto simples + HTML) dentro de um
+    envelope multipart/related, que é onde a imagem embutida entra. Isso
+    garante que clientes que não renderizam HTML ainda recebam o texto puro
+    como alternativa."""
     destinatarios = [d.strip() for d in destinatarios_texto.split(",") if d.strip()]
     if not (smtp_host and smtp_usuario and smtp_senha and destinatarios):
         st.error("Preencha servidor, remetente, senha e ao menos um destinatário na configuração de e-mail.")
         return
     try:
-        msg = MIMEMultipart()
+        msg = MIMEMultipart("related")
         msg["From"] = smtp_usuario
         msg["To"] = ", ".join(destinatarios)
         msg["Subject"] = assunto
-        msg.attach(MIMEText(corpo_texto, "plain"))
+
+        alternativo = MIMEMultipart("alternative")
+        alternativo.attach(MIMEText(corpo_texto, "plain", "utf-8"))
+        alternativo.attach(MIMEText(corpo_html, "html", "utf-8"))
+        msg.attach(alternativo)
 
         img_part = MIMEImage(imagem_bytes, name=nome_imagem)
+        img_part.add_header("Content-ID", f"<{cid_imagem}>")
+        img_part.add_header("Content-Disposition", "inline", filename=nome_imagem)
         msg.attach(img_part)
 
         with smtplib.SMTP(smtp_host, int(smtp_port)) as servidor:
@@ -746,10 +716,6 @@ def enviar_email_relatorio(assunto, corpo_texto, imagem_bytes, nome_imagem):
 # 8. Leitura da planilha — por CABEÇALHO de coluna, com cache e avisos claros
 # =============================================================================
 def localizar_colunas(sheet):
-    """Procura, na primeira linha da planilha, as colunas cujo cabeçalho é
-    'TOTAL' e 'USUARIO' (sem diferenciar acento/maiúscula). Retorna um dict
-    com os índices encontrados; chaves ausentes indicam que o cabeçalho não
-    foi localizado."""
     mapeamento = {}
     for col in range(1, sheet.max_column + 1):
         valor = sheet.cell(row=1, column=col).value
@@ -765,16 +731,13 @@ def localizar_colunas(sheet):
 
 @st.cache_data(show_spinner="Lendo planilha...")
 def ler_planilha(bytes_arquivo):
-    """Lê a planilha e devolve (dataframe, usando_fallback_de_coluna).
-    Considera apenas linhas visíveis (não ocultas), como no comportamento
-    original."""
     wb = openpyxl.load_workbook(io.BytesIO(bytes_arquivo), data_only=True)
     sheet = wb.active
 
     mapeamento = localizar_colunas(sheet)
     usando_fallback = ("TOTAL" not in mapeamento) or ("USUARIO" not in mapeamento)
-    col_total = mapeamento.get("TOTAL", 9)   # coluna I, por compatibilidade
-    col_usuario = mapeamento.get("USUARIO", 13)  # coluna M, por compatibilidade
+    col_total = mapeamento.get("TOTAL", 9)
+    col_usuario = mapeamento.get("USUARIO", 13)
 
     dados = []
     for row in range(2, sheet.max_row + 1):
@@ -797,20 +760,10 @@ def ler_planilha(bytes_arquivo):
 # =============================================================================
 def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_skus,
                             meta_exemplares, meta_skus, df_real):
-    """Gera uma imagem (PNG) com cards de KPI + tabela de detalhamento (sem os
-    números individuais de Exemplares/SKUs, que a diretoria não precisa ver),
-    pronta para copiar ou baixar.
-
-    O texto de "Movimentação Operacional" é quebrado em várias linhas quando
-    é longo (em vez de ficar cortado numa única linha). A altura de cada
-    linha da tabela é calculada em POLEGADAS (fixa por linha de texto, não
-    "esticada" para preencher um espaço maior), para o conteúdo aparecer
-    inteiro sem as linhas ficarem grossas demais quando o texto é curto.
-    """
     colunas_relatorio = ["Cargo", "Colaboradora", "Movimentação Operacional"]
     df_relatorio = df_real[colunas_relatorio].copy() if not df_real.empty else df_real
 
-    LARGURA_QUEBRA = 78  # nº aprox. de caracteres por linha na coluna de Movimentação
+    LARGURA_QUEBRA = 78
     linhas_por_registro = []
     if not df_relatorio.empty:
         textos_quebrados = []
@@ -821,14 +774,13 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
             linhas_por_registro.append(len(linhas_texto))
         df_relatorio["Movimentação Operacional"] = textos_quebrados
 
-    # --- Medidas fixas em polegadas (não dependem da quantidade de linhas) ---
     MARGEM_SUPERIOR_IN = 0.18
     ALTURA_TITULO_IN = 0.30
     ESPACO_TITULO_CARDS_IN = 0.20
     ALTURA_CARDS_IN = 1.05
     ESPACO_CARDS_TABELA_IN = 0.25
     ALTURA_CABECALHO_TABELA_IN = 0.36
-    ALTURA_LINHA_TABELA_IN = 0.24  # por linha de texto dentro da célula
+    ALTURA_LINHA_TABELA_IN = 0.24
     MARGEM_INFERIOR_IN = 0.12
 
     total_linhas_texto = sum(max(n, 1) for n in linhas_por_registro) if linhas_por_registro else 1
@@ -891,11 +843,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         tabela.auto_set_font_size(False)
         tabela.set_fontsize(8.5)
 
-        # Como a altura desses "eixos" (ax) já foi calculada acima em
-        # polegadas para caber exatamente cabeçalho + linhas de texto, basta
-        # dividir 1.0 (altura total do eixo) na mesma proporção de polegadas
-        # de cada linha — isso preenche o espaço certinho, sem sobrar vão
-        # (linha "gorda") nem faltar espaço (texto cortado).
         frac_por_linha_texto = ALTURA_LINHA_TABELA_IN / altura_tabela_in
         frac_cabecalho = ALTURA_CABECALHO_TABELA_IN / altura_tabela_in
 
@@ -921,12 +868,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
 
 
 def renderizar_tabela_html(df):
-    """Renderiza o DataFrame como uma tabela HTML própria (em vez do grid
-    interativo do st.dataframe), permitindo bordas arredondadas e quebra de
-    linha automática quando o texto de uma célula é longo (ex.: justificativas
-    de movimentação), em vez de cortar o conteúdo. As colunas passadas em `df`
-    definem o que aparece — para ocultar Exemplares/SKUs, basta não incluir
-    essas colunas no DataFrame antes de chamar esta função."""
     if df.empty:
         return "<div class='tabela-vazia'>Nenhum dado disponível.</div>"
 
@@ -937,7 +878,6 @@ def renderizar_tabela_html(df):
         "SKUs": "8%",
         "Meta Individual": "11%",
         "% Meta Individual": "11%",
-        # "Movimentação Operacional" fica sem largura fixa -> ocupa o restante
     }
 
     colunas = list(df.columns)
@@ -971,9 +911,6 @@ def renderizar_tabela_html(df):
 
 
 def gerar_excel_gerencial(df_real):
-    """Gera um .xlsx com a tabela gerencial completa (incluindo Exemplares e
-    SKUs individuais), para uso interno de análise — diferente da imagem/
-    e-mail para diretoria, que oculta esses números."""
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         (df_real if not df_real.empty else pd.DataFrame(
@@ -984,11 +921,6 @@ def gerar_excel_gerencial(df_real):
 
 
 def salvar_historico(data_str, total_ex, total_sk, pct_ex, pct_sk):
-    """Acrescenta (ou atualiza) o registro do dia no histórico local em CSV e
-    devolve o histórico completo carregado. Observação: em ambientes com
-    armazenamento efêmero (ex.: alguns serviços de deploy em nuvem), este
-    arquivo pode não persistir entre reinicializações — para uso contínuo,
-    considere apontar HIST_PATH para um disco persistente ou banco de dados."""
     novo = pd.DataFrame([{
         "data": data_str, "exemplares": total_ex, "skus": total_sk,
         "pct_exemplares": pct_ex, "pct_skus": pct_sk,
@@ -1006,7 +938,7 @@ def salvar_historico(data_str, total_ex, total_sk, pct_ex, pct_sk):
     try:
         hist.to_csv(HIST_PATH, index=False)
     except Exception:
-        pass  # ambiente sem permissão de escrita: segue sem persistir
+        pass
     return hist
 
 
@@ -1070,7 +1002,6 @@ if uploaded_file:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- Tabela gerencial individual -----------------------------------------
     data_str_atual = data_produtividade.strftime("%Y-%m-%d")
 
     data_gerencial = []
@@ -1081,10 +1012,6 @@ if uploaded_file:
         is_ausente = n in faltas_selecionadas
 
         if is_ausente:
-            # Mesmo ausente, se a pessoa já tiver produção registrada na
-            # planilha (ex.: trabalhou parte do dia antes da falta), mostra o
-            # valor real em vez de zerar — 0/0 só aparece se ela realmente
-            # não tiver nenhum registro na planilha.
             if not df_filtrado.empty:
                 df_func = df_filtrado[df_filtrado["USUARIO"] == nome_excel(n, ALIAS_EXCEL)]
                 qtd_exemplares = int(df_func["TOTAL"].sum())
@@ -1104,8 +1031,6 @@ if uploaded_file:
             else:
                 qtd_exemplares, qtd_skus = 0, 0
 
-            # Se o operador não aparece na planilha (nenhum registro encontrado) e
-            # não está marcado como ausente, ele é ignorado e não entra na tabela.
             if qtd_skus == 0:
                 continue
 
@@ -1113,7 +1038,7 @@ if uploaded_file:
             for m in mov["movimentacoes"]:
                 sai, ret, loc = m["sai"].strip(), m["ret"].strip(), m["loc"].strip()
                 if not (sai or ret or loc):
-                    continue  # linha em branco na tabela de movimentação: ignora
+                    continue
 
                 partes = []
                 if loc:
@@ -1133,8 +1058,6 @@ if uploaded_file:
                 " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
             )
 
-        # Se a pessoa tiver um texto editado manualmente para esta data, ele
-        # prevalece sobre o texto gerado automaticamente a partir dos horários.
         override_chave = (data_str_atual, n)
         if override_chave in st.session_state["mov_manual_overrides"]:
             justificativa_texto = st.session_state["mov_manual_overrides"][override_chave]
@@ -1147,7 +1070,6 @@ if uploaded_file:
             "Movimentação Operacional": justificativa_texto,
         }
 
-        # Meta individual (opcional) — só aparece se configurada para ao menos alguém.
         if METAS_INDIVIDUAIS:
             meta_pessoa = METAS_INDIVIDUAIS.get(n)
             if meta_pessoa:
@@ -1209,19 +1131,10 @@ if uploaded_file:
             },
         )
 
-        # Reincorpora as edições feitas na grade de volta ao df_real completo,
-        # preservando as colunas que estiverem ocultas no momento (ex.: se
-        # Exemplares/SKUs estiverem escondidos, seus valores originais não são
-        # perdidos — só as colunas visíveis são atualizadas com o que foi editado).
         for col in df_exibir_editado.columns:
             df_real[col] = df_exibir_editado[col].values
 
-        # Persiste o texto livre digitado, por pessoa + data, para sobreviver
-        # a reruns do Streamlit (upload de outro arquivo, clique em outro
-        # checkbox, etc.) — sem isso, o texto voltaria ao automático.
         def persistir_movimentacao_editada(df_editado):
-            """Grava o texto atual da grade (session_state + disco). Retorna
-            quantas linhas foram gravadas."""
             total_gravado = 0
             if "Movimentação Operacional" in df_editado.columns and "Colaboradora" in df_editado.columns:
                 for _, linha_editada in df_editado.iterrows():
@@ -1235,11 +1148,6 @@ if uploaded_file:
                 salvar_overrides_disco(st.session_state["mov_manual_overrides"])
             return total_gravado
 
-        # Tentativa automática (assim que você sai do campo, o Streamlit já
-        # reprocessa a página e isso roda sozinho) — mas, como o momento exato
-        # em que o navegador confirma a edição pode variar, use o botão
-        # "💾 Salvar" ao lado sempre que quiser ter certeza de que nada foi
-        # perdido, sem precisar sair do campo ou mexer em outra coisa antes.
         persistir_movimentacao_editada(df_exibir_editado)
 
         col_salvar, col_restaurar_texto = st.columns([1, 2])
@@ -1270,7 +1178,6 @@ if uploaded_file:
                 use_container_width=True,
             )
 
-    # --- Histórico / tendência ------------------------------------------------
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown(
         "<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; "
@@ -1287,7 +1194,6 @@ if uploaded_file:
     else:
         st.info("Sem dados válidos no dia — o histórico não foi atualizado.")
 
-    # --- Relatório em imagem ---------------------------------------------------
     st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>🖼️ Relatório em Imagem</h4>", unsafe_allow_html=True)
     st.caption("Clique com o botão direito na imagem e escolha **Copiar imagem** para colar direto no e-mail, ou baixe o arquivo abaixo.")
     imagem_relatorio = gerar_relatorio_imagem(
@@ -1310,21 +1216,49 @@ if uploaded_file:
         unsafe_allow_html=True,
     )
 
+    # Versão em texto simples (usada na caixa para copiar/colar manualmente,
+    # e como alternativa em clientes de e-mail que não leem HTML).
     texto_final = (
         f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\n"
-        f"referente ao dia {data_formatada}.\n\n--------------------------------\n"
+        f"referente ao dia {data_formatada}.\n\nObservações do Dia:\n"
+        f"(imagem do painel anexada/embutida neste e-mail)\n\n"
+        f"--------------------------------\n"
         f"Resumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n"
         f"--------------------------------\n\nAtenciosamente,"
     )
+
+    # Versão em HTML enviada de fato — reproduz o modelo do print: texto,
+    # depois "Observações do Dia:" e a imagem do painel logo abaixo, embutida
+    # via Content-ID (cid) em vez de só anexada.
+    CID_IMAGEM_RELATORIO = "relatorio_producao_imagem"
+    corpo_html_email = f"""\
+<html>
+  <body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color:#111827;">
+    <p>Boa tarde, Prezados.</p>
+    <p>Segue abaixo o relatório de produção.<br>
+       referente ao dia {html.escape(data_formatada)}.</p>
+    <p><strong>Observações do Dia:</strong></p>
+    <p><img src="cid:{CID_IMAGEM_RELATORIO}" alt="Painel Executivo de Produção" style="max-width:700px; width:100%; border:1px solid #E5E7EB; border-radius:8px;"></p>
+    <p>--------------------------------<br>
+       Resumo Varejo.<br>
+       SKU: {total_skus}<br>
+       Exemplares: {total_exemplares:,}<br>
+       --------------------------------</p>
+    <p>Atenciosamente,</p>
+  </body>
+</html>
+"""
 
     st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final, height=200, key="texto_email")
 
     if st.button("📧 Enviar relatório por e-mail agora"):
         enviar_email_relatorio(
-            assunto=f"Relatório de Produção — {data_formatada}",
+            assunto=f"Relatório de Produção - {data_formatada}",
             corpo_texto=texto_final,
+            corpo_html=corpo_html_email,
             imagem_bytes=imagem_relatorio,
             nome_imagem=nome_arquivo_imagem,
+            cid_imagem=CID_IMAGEM_RELATORIO,
         )
 
 else:
