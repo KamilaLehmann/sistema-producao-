@@ -31,6 +31,9 @@ Melhorias implementadas nesta versão em relação ao script original:
  13. Coluna "Movimentação Operacional" agora aceita texto livre editado à mão
      (persistido por pessoa + data, sobrepondo o texto gerado automaticamente
      a partir dos horários), com botão para restaurar o texto automático.
+ 14. Horários de Saída/Retorno/Local do sidebar agora podem ser salvos por
+     pessoa (botão "💾 Salvar") para não precisar digitar de novo a cada vez
+     que ela for movimentada, com botão "🔄 Resetar" para voltar ao padrão.
 """
 
 import streamlit as st
@@ -56,6 +59,7 @@ import matplotlib.patches as mpatches
 # =============================================================================
 HIST_PATH = "historico_producao.csv"
 MOV_OVERRIDES_PATH = "movimentacoes_manuais.json"  # texto livre digitado na coluna Movimentação Operacional
+HORARIOS_SALVOS_PATH = "horarios_salvos.json"  # horários de Saída/Retorno/Local salvos por pessoa (sidebar)
 
 # (constantes/função de senha removidas junto com o login — ver comentário
 # na seção 2 abaixo caso queira reativar o acesso restrito no futuro)
@@ -285,7 +289,7 @@ def normalizar(texto):
 #                       movimentação quando a pessoa for marcada como movimentada (opcional)
 DEFAULT_EQUIPE = {
     "Líder": [
-        {"nome": "Kamila Moraes"},
+        {"nome": "Kamila Moraes", "alias_excel": "KAMILA"},
         {"nome": "Beatriz Alcantara", "alias_excel": "BEATRIZ"},
     ],
     "Apoio": [
@@ -423,6 +427,29 @@ def salvar_overrides_disco(overrides):
         pass  # ambiente sem permissão de escrita: segue funcionando só com session_state
 
 
+def carregar_horarios_disco():
+    """Carrega do disco os horários (Saída/Retorno/Local) que o usuário já
+    salvou manualmente para cada pessoa na barra lateral, para não precisar
+    digitar de novo toda vez que ela for marcada como movimentada."""
+    if not os.path.exists(HORARIOS_SALVOS_PATH):
+        return {}
+    try:
+        with open(HORARIOS_SALVOS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def salvar_horarios_disco(horarios):
+    """Grava no disco os horários salvos por pessoa, para persistir entre
+    reruns e também entre atualizações completas da página (F5)."""
+    try:
+        with open(HORARIOS_SALVOS_PATH, "w", encoding="utf-8") as f:
+            json.dump(horarios, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # ambiente sem permissão de escrita: segue funcionando só com session_state
+
+
 def texto_seguro(valor):
     """Converte o valor de uma célula de texto vinda do st.data_editor para
     string, tratando None/NaN como vazio — evita AttributeError quando a
@@ -443,6 +470,13 @@ if "mov_manual_overrides" not in st.session_state:
     # (sobrevive a F5 / nova aba) e, a partir daí, também é atualizado a cada
     # edição para não se perder ao mexer em outro campo (ex.: horários).
     st.session_state["mov_manual_overrides"] = carregar_overrides_disco()
+
+if "horarios_salvos" not in st.session_state:
+    # Horários (Saída/Retorno/Local) que o usuário já confirmou salvar para
+    # cada pessoa, sobrepondo o horário padrão configurado em "saida_padrao"
+    # / "retorno_padrao" / "local_padrao". Começa vazio (nada pré-salvo) e só
+    # passa a existir quando alguém clicar em "💾 Salvar" no sidebar.
+    st.session_state["horarios_salvos"] = carregar_horarios_disco()
 
 
 # =============================================================================
@@ -549,16 +583,32 @@ for cargo, integrantes in EQUIPE.items():
         elif is_movimentado:
             st.sidebar.markdown(f"**👤 {op}**", unsafe_allow_html=True)
 
-            defaults = DEFAULTS_MOV.get(op, {})
-            linha_inicial = pd.DataFrame(
-                [
-                    {
-                        "Saída": parse_hora_str(defaults.get("saida", "")),
-                        "Retorno": parse_hora_str(defaults.get("retorno", "")),
-                        "Local": defaults.get("local", ""),
-                    }
-                ]
-            )
+            # Se já existir um horário salvo manualmente para esta pessoa, ele
+            # tem prioridade sobre o horário padrão configurado em "⚙️ Configurar
+            # Equipe" — assim, uma vez salvo, não precisa digitar de novo.
+            salvo = st.session_state["horarios_salvos"].get(op)
+            if salvo:
+                linha_inicial = pd.DataFrame(
+                    [
+                        {
+                            "Saída": parse_hora_str(linha.get("saida", "")),
+                            "Retorno": parse_hora_str(linha.get("retorno", "")),
+                            "Local": linha.get("local", ""),
+                        }
+                        for linha in salvo
+                    ] or [{"Saída": None, "Retorno": None, "Local": ""}]
+                )
+            else:
+                defaults = DEFAULTS_MOV.get(op, {})
+                linha_inicial = pd.DataFrame(
+                    [
+                        {
+                            "Saída": parse_hora_str(defaults.get("saida", "")),
+                            "Retorno": parse_hora_str(defaults.get("retorno", "")),
+                            "Local": defaults.get("local", ""),
+                        }
+                    ]
+                )
 
             editado = st.sidebar.data_editor(
                 linha_inicial,
@@ -584,6 +634,22 @@ for cargo, integrantes in EQUIPE.items():
                     movimentacoes_op.append({"sai": sai_txt, "ret": ret_txt, "loc": loc})
 
             dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": movimentacoes_op}
+
+            col_salvar_hora, col_resetar_hora = st.sidebar.columns(2)
+            with col_salvar_hora:
+                if st.button("💾 Salvar", key=f"salvar_horario_{op}", use_container_width=True):
+                    st.session_state["horarios_salvos"][op] = [
+                        {"saida": m["sai"], "retorno": m["ret"], "local": m["loc"]}
+                        for m in movimentacoes_op
+                    ]
+                    salvar_horarios_disco(st.session_state["horarios_salvos"])
+                    st.sidebar.success(f"Horário de {op} salvo.")
+            with col_resetar_hora:
+                if st.button("🔄 Resetar", key=f"resetar_horario_{op}", use_container_width=True):
+                    st.session_state["horarios_salvos"].pop(op, None)
+                    salvar_horarios_disco(st.session_state["horarios_salvos"])
+                    st.session_state.pop(f"mov_editor_{op}", None)
+                    st.rerun()
 
         else:
             st.sidebar.markdown(
