@@ -49,6 +49,7 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime, time as dtime
+from zoneinfo import ZoneInfo
 import io
 import os
 import json
@@ -488,7 +489,9 @@ uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-data_produtividade = st.sidebar.date_input("Data da Produtividade:", datetime.now(), key="data_produtividade")
+data_produtividade = st.sidebar.date_input(
+    "Data da Produtividade:", datetime.now(ZoneInfo("America/Sao_Paulo")), key="data_produtividade"
+)
 data_formatada = data_produtividade.strftime("%d/%m")
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
@@ -845,17 +848,18 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
     fig.patch.set_facecolor("#F8FAFC")
 
-    # --- Faixa de cabeçalho (navy) ------------------------------------------
+    # --- Faixa de cabeçalho (fundo branco) -----------------------------------
     frac_header_altura = ALTURA_HEADER_IN / altura_fig
     ax_header = fig.add_axes([0, 1 - frac_header_altura, 1, frac_header_altura])
     ax_header.set_xlim(0, 1); ax_header.set_ylim(0, 1); ax_header.axis("off")
-    ax_header.add_patch(mpatches.Rectangle((0, 0), 1, 1, facecolor=COR_NAVY, edgecolor="none"))
+    ax_header.add_patch(mpatches.Rectangle((0, 0), 1, 1, facecolor="#FFFFFF", edgecolor="none"))
+    ax_header.plot([0, 1], [0.02, 0.02], color="#E5E7EB", linewidth=1, transform=ax_header.transAxes)
 
     # Ícone simples (quadrado arredondado com 3 barrinhas ascendentes)
     icon_x, icon_w = 0.028, 0.032
     ax_header.add_patch(mpatches.FancyBboxPatch(
         (icon_x, 0.28), icon_w, 0.44, boxstyle="round,pad=0,rounding_size=0.012",
-        linewidth=0, facecolor="#1E3A8A", transform=ax_header.transAxes
+        linewidth=0, facecolor=COR_NAVY, transform=ax_header.transAxes
     ))
     barra_larg = icon_w / 5.6
     for i, alt in enumerate([0.14, 0.22, 0.30]):
@@ -865,15 +869,16 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         ))
 
     ax_header.text(icon_x + icon_w + 0.018, 0.66, "Painel Executivo de Produção",
-                    fontsize=15.5, fontweight="bold", color="#FFFFFF", va="center")
+                    fontsize=15.5, fontweight="bold", color=COR_NAVY, va="center")
     ax_header.text(icon_x + icon_w + 0.018, 0.30, "Varejo · acompanhamento diário de produtividade",
-                    fontsize=8.5, color="#94A3B8", va="center")
+                    fontsize=8.5, color=COR_MUTED, va="center")
 
+    horario_brasil = datetime.now(ZoneInfo("America/Sao_Paulo"))
     if data_formatada:
         ax_header.text(0.972, 0.66, f"Referente a {data_formatada}", fontsize=9.5,
-                        fontweight="bold", color="#FFFFFF", va="center", ha="right")
-        ax_header.text(0.972, 0.30, f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        fontsize=7.5, color="#94A3B8", va="center", ha="right")
+                        fontweight="bold", color=COR_NAVY, va="center", ha="right")
+        ax_header.text(0.972, 0.30, f"Gerado em {horario_brasil.strftime('%d/%m/%Y %H:%M')}",
+                        fontsize=7.5, color=COR_MUTED, va="center", ha="right")
 
     # --- Cards de KPI --------------------------------------------------------
     y_cards_topo_in = altura_fig - ALTURA_HEADER_IN - ESPACO_HEADER_CARDS_IN
