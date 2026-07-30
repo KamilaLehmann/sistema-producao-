@@ -37,6 +37,10 @@ Melhorias implementadas nesta versão em relação ao script original:
  15. E-mail agora é enviado em HTML, com a imagem do relatório embutida
      diretamente no corpo (igual ao modelo mostrado pelo usuário), em vez de
      ir só como anexo separado.
+ 16. Colaboradoras sem nenhum registro na planilha no dia (Exemplares/SKUs
+     zerados) agora continuam aparecendo no Detalhamento Gerencial — antes
+     elas "sumiam" da tabela automaticamente. Se quiser tirá-las da tabela,
+     use o filtro "Ocultar do Setor" no sidebar.
 """
 
 import streamlit as st
@@ -1032,8 +1036,12 @@ if uploaded_file:
             else:
                 qtd_exemplares, qtd_skus = 0, 0
 
-            if qtd_skus == 0:
-                continue
+            # (antes havia um "if qtd_skus == 0: continue" aqui, que fazia a
+            # pessoa sumir da tabela quando não tinha nenhum registro na
+            # planilha no dia. Isso foi removido por pedido — agora ela
+            # continua aparecendo, com Exemplares/SKUs zerados. Para
+            # ocultá-la manualmente, use o filtro "Ocultar do Setor" no
+            # sidebar.)
 
             historico_justificativas = []
             for m in mov["movimentacoes"]:
@@ -1055,9 +1063,12 @@ if uploaded_file:
                 complemento = " ".join(partes) if partes else "(sem horário/local informado)"
                 historico_justificativas.append(f"{prefixo} {complemento}")
 
-            justificativa_texto = (
-                " ; ".join(historico_justificativas) + "." if historico_justificativas else "Atividade normal no setor."
-            )
+            if historico_justificativas:
+                justificativa_texto = " ; ".join(historico_justificativas) + "."
+            elif qtd_skus == 0:
+                justificativa_texto = "Sem registros na planilha nesta data."
+            else:
+                justificativa_texto = "Atividade normal no setor."
 
         # A ausência sempre tem prioridade sobre um texto manual salvo
         # anteriormente. Sem isso, um texto de movimentação salvo enquanto a
