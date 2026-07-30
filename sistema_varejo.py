@@ -37,11 +37,12 @@ Melhorias implementadas nesta versão em relação ao script original:
  15. E-mail agora é enviado em HTML, com a imagem do relatório embutida
      diretamente no corpo (igual ao modelo mostrado pelo usuário), em vez de
      ir só como anexo separado.
- 16. Nova opção no sidebar "➕ Incluir Sem Registro na Planilha": por padrão,
-     quem não tem nenhum registro no dia (Exemplares/SKUs zerados) continua
-     oculto(a) do Detalhamento Gerencial, igual ao comportamento original.
-     Selecionando o nome nessa lista, a pessoa passa a aparecer mesmo assim,
-     com os números zerados e o texto "Sem registros na planilha nesta data."
+ 16. Nova seção no sidebar "➕ Adicionar Manualmente ao Relatório": digite um
+     nome e clique em Adicionar para incluí-lo(a) no Detalhamento Gerencial,
+     mesmo que não esteja na equipe cadastrada e mesmo sem registro na
+     planilha no dia (não depende da seção de Movimentação). O comportamento
+     padrão da equipe cadastrada continua o mesmo de antes: quem tem SKUs
+     zerados no dia não aparece automaticamente na tabela.
 """
 
 import streamlit as st
@@ -66,7 +67,6 @@ import matplotlib.patches as mpatches
 # =============================================================================
 # 0. CONSTANTES DE ARQUIVO
 # =============================================================================
-HIST_PATH = "historico_producao.csv"
 MOV_OVERRIDES_PATH = "movimentacoes_manuais.json"  # texto livre digitado na coluna Movimentação Operacional
 HORARIOS_SALVOS_PATH = "horarios_salvos.json"  # horários de Saída/Retorno/Local salvos por pessoa (sidebar)
 
@@ -534,17 +534,41 @@ remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LI
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
-st.sidebar.markdown("### ➕ Incluir Sem Registro na Planilha")
+st.sidebar.markdown("### ➕ Adicionar Manualmente ao Relatório")
 st.sidebar.caption(
-    "Por padrão, quem não tem nenhum registro na planilha no dia não aparece "
-    "no Detalhamento Gerencial. Selecione aqui quem você quer forçar a "
-    "aparecer mesmo assim (com Exemplares/SKUs zerados)."
+    "Digite um nome e adicione à tabela do Detalhamento Gerencial, mesmo que "
+    "a pessoa não esteja na equipe cadastrada ou não tenha registro na "
+    "planilha no dia. Não precisa passar pela seção de Movimentação."
 )
-incluir_sem_registro = st.sidebar.multiselect(
-    "Adicionar ao relatório mesmo sem registro:",
-    [n for n in NOMES_LISTA if n not in remover_do_setor],
-    key="incluir_sem_registro",
+
+if "pessoas_manuais" not in st.session_state:
+    st.session_state["pessoas_manuais"] = []
+
+novo_nome_manual = st.sidebar.text_input("Nome da pessoa:", key="novo_nome_manual")
+novo_cargo_manual = st.sidebar.selectbox(
+    "Cargo:", list(EQUIPE.keys()) + ["Outro"], key="novo_cargo_manual"
 )
+if st.sidebar.button("➕ Adicionar à tabela", use_container_width=True):
+    nome_limpo = novo_nome_manual.strip()
+    if not nome_limpo:
+        st.sidebar.warning("Digite um nome antes de adicionar.")
+    elif nome_limpo in NOMES_LISTA or any(
+        p["nome"] == nome_limpo for p in st.session_state["pessoas_manuais"]
+    ):
+        st.sidebar.warning("Esse nome já está na equipe ou já foi adicionado.")
+    else:
+        st.session_state["pessoas_manuais"].append({"nome": nome_limpo, "cargo": novo_cargo_manual})
+        st.session_state["novo_nome_manual"] = ""
+        st.rerun()
+
+if st.session_state["pessoas_manuais"]:
+    st.sidebar.caption("Adicionados manualmente:")
+    for i, pessoa in enumerate(st.session_state["pessoas_manuais"]):
+        col_nome_add, col_remover_add = st.sidebar.columns([3, 1])
+        col_nome_add.markdown(f"👤 {pessoa['nome']} · {pessoa['cargo']}")
+        if col_remover_add.button("🗑️", key=f"remover_manual_{i}", use_container_width=True):
+            st.session_state["pessoas_manuais"].pop(i)
+            st.rerun()
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
@@ -778,7 +802,7 @@ def ler_planilha(bytes_arquivo):
 # 9. Geração de relatório em imagem, Excel e histórico
 # =============================================================================
 def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_skus,
-                            meta_exemplares, meta_skus, df_real):
+                            meta_exemplares, meta_skus, df_real, data_formatada=""):
     colunas_relatorio = ["Cargo", "Colaboradora", "Movimentação Operacional"]
     df_relatorio = df_real[colunas_relatorio].copy() if not df_real.empty else df_real
 
@@ -793,60 +817,127 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
             linhas_por_registro.append(len(linhas_texto))
         df_relatorio["Movimentação Operacional"] = textos_quebrados
 
-    MARGEM_SUPERIOR_IN = 0.18
-    ALTURA_TITULO_IN = 0.30
-    ESPACO_TITULO_CARDS_IN = 0.20
-    ALTURA_CARDS_IN = 1.05
-    ESPACO_CARDS_TABELA_IN = 0.25
-    ALTURA_CABECALHO_TABELA_IN = 0.36
+    # --- Medidas gerais (em polegadas) -------------------------------------
+    ALTURA_HEADER_IN = 0.62
+    ESPACO_HEADER_CARDS_IN = 0.22
+    ALTURA_CARDS_IN = 1.15
+    ESPACO_CARDS_TABELA_IN = 0.22
+    ALTURA_CABECALHO_TABELA_IN = 0.34
     ALTURA_LINHA_TABELA_IN = 0.24
-    MARGEM_INFERIOR_IN = 0.12
+    ESPACO_TABELA_RODAPE_IN = 0.16
+    ALTURA_RODAPE_IN = 0.26
+    MARGEM_INFERIOR_IN = 0.08
 
     total_linhas_texto = sum(max(n, 1) for n in linhas_por_registro) if linhas_por_registro else 1
     altura_tabela_in = ALTURA_CABECALHO_TABELA_IN + ALTURA_LINHA_TABELA_IN * total_linhas_texto
 
     altura_fig = (
-        MARGEM_SUPERIOR_IN + ALTURA_TITULO_IN + ESPACO_TITULO_CARDS_IN + ALTURA_CARDS_IN
-        + ESPACO_CARDS_TABELA_IN + altura_tabela_in + MARGEM_INFERIOR_IN
+        ALTURA_HEADER_IN + ESPACO_HEADER_CARDS_IN + ALTURA_CARDS_IN + ESPACO_CARDS_TABELA_IN
+        + altura_tabela_in + ESPACO_TABELA_RODAPE_IN + ALTURA_RODAPE_IN + MARGEM_INFERIOR_IN
     )
 
+    COR_NAVY = "#0F172A"
+    COR_AZUL = "#2563EB"
+    COR_TEAL = "#0D9488"
+    COR_TEXTO = "#111827"
+    COR_MUTED = "#64748B"
+
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
-    fig.patch.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("#F8FAFC")
 
-    y_titulo = 1 - (MARGEM_SUPERIOR_IN / altura_fig)
-    fig.text(0.04, y_titulo, "Painel Executivo de Produção", fontsize=18, fontweight="bold", color="#111827", va="top")
+    # --- Faixa de cabeçalho (navy) ------------------------------------------
+    frac_header_altura = ALTURA_HEADER_IN / altura_fig
+    ax_header = fig.add_axes([0, 1 - frac_header_altura, 1, frac_header_altura])
+    ax_header.set_xlim(0, 1); ax_header.set_ylim(0, 1); ax_header.axis("off")
+    ax_header.add_patch(mpatches.Rectangle((0, 0), 1, 1, facecolor=COR_NAVY, edgecolor="none"))
 
-    y_cards_topo_in = altura_fig - MARGEM_SUPERIOR_IN - ALTURA_TITULO_IN - ESPACO_TITULO_CARDS_IN
+    # Ícone simples (quadrado arredondado com 3 barrinhas ascendentes)
+    icon_x, icon_w = 0.028, 0.032
+    ax_header.add_patch(mpatches.FancyBboxPatch(
+        (icon_x, 0.28), icon_w, 0.44, boxstyle="round,pad=0,rounding_size=0.012",
+        linewidth=0, facecolor="#1E3A8A", transform=ax_header.transAxes
+    ))
+    barra_larg = icon_w / 5.6
+    for i, alt in enumerate([0.14, 0.22, 0.30]):
+        ax_header.add_patch(mpatches.Rectangle(
+            (icon_x + 0.006 + i * (barra_larg + 0.004), 0.36), barra_larg, alt,
+            facecolor="#93C5FD", edgecolor="none", transform=ax_header.transAxes
+        ))
+
+    ax_header.text(icon_x + icon_w + 0.018, 0.66, "Painel Executivo de Produção",
+                    fontsize=15.5, fontweight="bold", color="#FFFFFF", va="center")
+    ax_header.text(icon_x + icon_w + 0.018, 0.30, "Varejo · acompanhamento diário de produtividade",
+                    fontsize=8.5, color="#94A3B8", va="center")
+
+    if data_formatada:
+        ax_header.text(0.972, 0.66, f"Referente a {data_formatada}", fontsize=9.5,
+                        fontweight="bold", color="#FFFFFF", va="center", ha="right")
+        ax_header.text(0.972, 0.30, f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        fontsize=7.5, color="#94A3B8", va="center", ha="right")
+
+    # --- Cards de KPI --------------------------------------------------------
+    y_cards_topo_in = altura_fig - ALTURA_HEADER_IN - ESPACO_HEADER_CARDS_IN
     y_cards_base_in = y_cards_topo_in - ALTURA_CARDS_IN
     frac_cards_base = y_cards_base_in / altura_fig
     frac_cards_altura = ALTURA_CARDS_IN / altura_fig
 
-    def desenhar_card(x, largura, titulo, valor, sub, cor_accent):
+    def desenhar_card(x, largura, titulo, valor, sub, pct, cor_accent):
         ax = fig.add_axes([x, frac_cards_base, largura, frac_cards_altura])
         ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+
+        # Sombra sutil (retângulo levemente deslocado e mais claro atrás do card)
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (0.015, 0.03), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.09",
+            linewidth=0, facecolor="#E2E8F0", alpha=0.6, transform=ax.transAxes
+        ))
         card = mpatches.FancyBboxPatch(
-            (0.01, 0.04), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.08",
-            linewidth=1, edgecolor="#EAEAEA", facecolor="white", transform=ax.transAxes
+            (0.01, 0.06), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.09",
+            linewidth=1, edgecolor="#E5E7EB", facecolor="white", transform=ax.transAxes
         )
         ax.add_patch(card)
         barra = mpatches.FancyBboxPatch(
-            (0.01, 0.04), 0.015, 0.92, boxstyle="round,pad=0,rounding_size=0.008",
+            (0.01, 0.06), 0.014, 0.92, boxstyle="round,pad=0,rounding_size=0.007",
             linewidth=0, facecolor=cor_accent, transform=ax.transAxes
         )
         ax.add_patch(barra)
-        ax.text(0.09, 0.76, titulo, fontsize=9, fontweight="bold", color="#9CA3AF", va="top")
-        ax.text(0.09, 0.53, valor, fontsize=23, fontweight="bold", color="#111827", va="top")
-        ax.text(0.09, 0.20, sub, fontsize=8, color="#111827", va="top")
+
+        ax.text(0.09, 0.80, titulo, fontsize=8.5, fontweight="bold", color="#94A3B8", va="top")
+        ax.text(0.09, 0.60, valor, fontsize=22, fontweight="bold", color=COR_TEXTO, va="top")
+        ax.text(0.09, 0.35, sub, fontsize=7.8, color=COR_MUTED, va="top")
+
+        # Barra de progresso
+        largura_barra = 0.82
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (0.09, 0.16), largura_barra, 0.055, boxstyle="round,pad=0,rounding_size=0.03",
+            linewidth=0, facecolor="#E5E7EB", transform=ax.transAxes
+        ))
+        preenchido = max(min(pct, 1.0), 0.0) * largura_barra
+        if preenchido > 0.02:
+            ax.add_patch(mpatches.FancyBboxPatch(
+                (0.09, 0.16), preenchido, 0.055, boxstyle="round,pad=0,rounding_size=0.03",
+                linewidth=0, facecolor=cor_accent, transform=ax.transAxes
+            ))
 
     desenhar_card(0.04, 0.44, "TOTAL DE EXEMPLARES", f"{total_exemplares:,} un",
-                  f"Meta Diária: {meta_exemplares:,} un  ·  Atingido: {pct_exemplares:.1%}", "#2563EB")
+                  f"Meta Diária: {meta_exemplares:,} un  ·  Atingido: {pct_exemplares:.1%}",
+                  pct_exemplares, COR_AZUL)
     desenhar_card(0.52, 0.44, "TOTAL DE SKU", f"{total_skus:,}",
-                  f"Meta Diária: {meta_skus:,}  ·  Atingido: {pct_skus:.1%}", "#0D9488")
+                  f"Meta Diária: {meta_skus:,}  ·  Atingido: {pct_skus:.1%}",
+                  pct_skus, COR_TEAL)
 
+    # --- Tabela ---------------------------------------------------------------
     y_tabela_topo_in = y_cards_base_in - ESPACO_CARDS_TABELA_IN
-    y_tabela_base_in = MARGEM_INFERIOR_IN
+    y_tabela_base_in = y_tabela_topo_in - altura_tabela_in
     frac_tabela_base = y_tabela_base_in / altura_fig
-    frac_tabela_altura = (y_tabela_topo_in - y_tabela_base_in) / altura_fig
+    frac_tabela_altura = altura_tabela_in / altura_fig
+
+    # Moldura arredondada por trás da tabela (efeito "card")
+    ax_moldura = fig.add_axes([0.04, frac_tabela_base, 0.92, frac_tabela_altura])
+    ax_moldura.set_xlim(0, 1); ax_moldura.set_ylim(0, 1); ax_moldura.axis("off")
+    ax_moldura.add_patch(mpatches.FancyBboxPatch(
+        (0, 0), 1, 1, boxstyle="round,pad=0,rounding_size=0.025",
+        linewidth=1.1, edgecolor="#E2E8F0", facecolor="white", transform=ax_moldura.transAxes
+    ))
 
     ax = fig.add_axes([0.04, frac_tabela_base, 0.92, frac_tabela_altura])
     ax.axis("off")
@@ -866,21 +957,31 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         frac_cabecalho = ALTURA_CABECALHO_TABELA_IN / altura_tabela_in
 
         for (row, col), cell in tabela.get_celld().items():
-            cell.set_edgecolor("#EFEFEF")
-            cell.PAD = 0.02
+            cell.set_edgecolor("#EEF2F6")
+            cell.PAD = 0.025
             cell.get_text().set_verticalalignment("center")
             if row == 0:
-                cell.set_facecolor("#111827")
+                cell.set_facecolor(COR_NAVY)
                 cell.set_text_props(color="white", fontweight="bold")
                 cell.set_height(frac_cabecalho)
             else:
-                cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#FAFAFA")
+                cell.set_facecolor("#FFFFFF" if row % 2 == 0 else "#F8FAFC")
                 cell.set_height(frac_por_linha_texto * max(linhas_por_registro[row - 1], 1))
     else:
-        ax.text(0, 0.9, "Nenhum dado disponível.", fontsize=9, color="#64748B")
+        ax.text(0.02, 0.9, "Nenhum dado disponível.", fontsize=9, color=COR_MUTED)
+
+    # --- Rodapé ---------------------------------------------------------------
+    frac_rodape_altura = ALTURA_RODAPE_IN / altura_fig
+    ax_rodape = fig.add_axes([0.04, 0, 0.92, frac_rodape_altura])
+    ax_rodape.set_xlim(0, 1); ax_rodape.set_ylim(0, 1); ax_rodape.axis("off")
+    ax_rodape.plot([0, 1], [0.92, 0.92], color="#E2E8F0", linewidth=1, transform=ax_rodape.transAxes)
+    ax_rodape.text(0, 0.35, "Painel Executivo de Produção · Varejo", fontsize=7.5,
+                    color="#94A3B8", va="center", ha="left")
+    ax_rodape.text(1, 0.35, f"{total_skus} SKU · {total_exemplares:,} exemplares",
+                    fontsize=7.5, color="#94A3B8", va="center", ha="right")
 
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", facecolor=fig.get_facecolor(), bbox_inches="tight")
+    fig.savefig(buffer, format="png", facecolor=fig.get_facecolor())
     plt.close(fig)
     buffer.seek(0)
     return buffer.getvalue()
@@ -937,28 +1038,6 @@ def gerar_excel_gerencial(df_real):
         )).to_excel(writer, index=False, sheet_name="Produtividade")
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def salvar_historico(data_str, total_ex, total_sk, pct_ex, pct_sk):
-    novo = pd.DataFrame([{
-        "data": data_str, "exemplares": total_ex, "skus": total_sk,
-        "pct_exemplares": pct_ex, "pct_skus": pct_sk,
-    }])
-    if os.path.exists(HIST_PATH):
-        try:
-            hist = pd.read_csv(HIST_PATH)
-            hist = hist[hist["data"] != data_str]
-            hist = pd.concat([hist, novo], ignore_index=True)
-        except Exception:
-            hist = novo
-    else:
-        hist = novo
-    hist = hist.sort_values("data")
-    try:
-        hist.to_csv(HIST_PATH, index=False)
-    except Exception:
-        pass
-    return hist
 
 
 # =============================================================================
@@ -1051,11 +1130,7 @@ if uploaded_file:
             else:
                 qtd_exemplares, qtd_skus = 0, 0
 
-            # Quem não tem nenhum registro na planilha no dia (SKUs = 0) só
-            # aparece na tabela se tiver sido explicitamente selecionado(a)
-            # em "➕ Incluir Sem Registro na Planilha" no sidebar. Caso
-            # contrário, continua oculto(a) como no comportamento original.
-            if qtd_skus == 0 and n not in incluir_sem_registro:
+            if qtd_skus == 0:
                 continue
 
             historico_justificativas = []
@@ -1118,6 +1193,45 @@ if uploaded_file:
                 linha["% Meta Individual"] = ""
 
         data_gerencial.append(linha)
+
+    # --- Pessoas adicionadas manualmente pela lateral ("➕ Adicionar
+    # Manualmente ao Relatório") — entram na tabela mesmo sem estar na
+    # equipe cadastrada e mesmo sem registro na planilha no dia. Se o nome
+    # digitado bater com algo na planilha, os números reais são usados;
+    # senão, ficam zerados.
+    for pessoa_manual in st.session_state["pessoas_manuais"]:
+        nome_manual = pessoa_manual["nome"]
+        cargo_manual = pessoa_manual["cargo"]
+
+        if not df_filtrado.empty:
+            df_func_manual = df_filtrado[df_filtrado["USUARIO"] == normalizar(nome_manual)]
+            qtd_exemplares_manual = int(df_func_manual["TOTAL"].sum())
+            qtd_skus_manual = int(len(df_func_manual))
+        else:
+            qtd_exemplares_manual, qtd_skus_manual = 0, 0
+
+        override_chave_manual = (data_str_atual, nome_manual)
+        if qtd_skus_manual > 0:
+            texto_automatico_manual = "Atividade normal no setor."
+        else:
+            texto_automatico_manual = "Sem registros na planilha nesta data. (Adicionada manualmente)"
+        textos_automaticos_por_pessoa[nome_manual] = texto_automatico_manual
+        justificativa_manual = st.session_state["mov_manual_overrides"].get(
+            override_chave_manual, texto_automatico_manual
+        )
+
+        linha_manual = {
+            "Cargo": cargo_manual,
+            "Colaboradora": nome_manual,
+            "Exemplares": qtd_exemplares_manual,
+            "SKUs": qtd_skus_manual,
+            "Movimentação Operacional": justificativa_manual,
+        }
+        if METAS_INDIVIDUAIS:
+            linha_manual["Meta Individual"] = ""
+            linha_manual["% Meta Individual"] = ""
+
+        data_gerencial.append(linha_manual)
 
     df_real = pd.DataFrame(data_gerencial)
 
@@ -1229,25 +1343,12 @@ if uploaded_file:
             )
 
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    st.markdown(
-        "<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; "
-        "font-weight: 700;'>📈 Evolução da Produção</h3>",
-        unsafe_allow_html=True,
-    )
-    if not df_filtrado.empty:
-        hist = salvar_historico(
-            data_produtividade.strftime("%Y-%m-%d"), total_exemplares, total_skus, pct_exemplares, pct_skus
-        )
-        hist_recente = hist.sort_values("data").tail(30).set_index("data")
-        st.line_chart(hist_recente[["exemplares", "skus"]])
-        st.caption("Últimos 30 registros salvos localmente em `historico_producao.csv`.")
-    else:
-        st.info("Sem dados válidos no dia — o histórico não foi atualizado.")
 
     st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>🖼️ Relatório em Imagem</h4>", unsafe_allow_html=True)
     st.caption("Clique com o botão direito na imagem e escolha **Copiar imagem** para colar direto no e-mail, ou baixe o arquivo abaixo.")
     imagem_relatorio = gerar_relatorio_imagem(
-        total_exemplares, total_skus, pct_exemplares, pct_skus, META_EXEMPLARES, META_SKUS, df_real
+        total_exemplares, total_skus, pct_exemplares, pct_skus, META_EXEMPLARES, META_SKUS, df_real,
+        data_formatada=data_formatada,
     )
     st.image(imagem_relatorio, use_container_width=True)
     nome_arquivo_imagem = f"relatorio_producao_{data_produtividade.strftime('%Y-%m-%d')}.png"
