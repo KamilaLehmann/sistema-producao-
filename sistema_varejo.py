@@ -37,10 +37,11 @@ Melhorias implementadas nesta versão em relação ao script original:
  15. E-mail agora é enviado em HTML, com a imagem do relatório embutida
      diretamente no corpo (igual ao modelo mostrado pelo usuário), em vez de
      ir só como anexo separado.
- 16. Colaboradoras sem nenhum registro na planilha no dia (Exemplares/SKUs
-     zerados) agora continuam aparecendo no Detalhamento Gerencial — antes
-     elas "sumiam" da tabela automaticamente. Se quiser tirá-las da tabela,
-     use o filtro "Ocultar do Setor" no sidebar.
+ 16. Nova opção no sidebar "➕ Incluir Sem Registro na Planilha": por padrão,
+     quem não tem nenhum registro no dia (Exemplares/SKUs zerados) continua
+     oculto(a) do Detalhamento Gerencial, igual ao comportamento original.
+     Selecionando o nome nessa lista, a pessoa passa a aparecer mesmo assim,
+     com os números zerados e o texto "Sem registros na planilha nesta data."
 """
 
 import streamlit as st
@@ -530,6 +531,20 @@ st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsa
 
 st.sidebar.markdown("### 👁️ Filtros Gerenciais")
 remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA, key="remover_do_setor")
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+
+st.sidebar.markdown("### ➕ Incluir Sem Registro na Planilha")
+st.sidebar.caption(
+    "Por padrão, quem não tem nenhum registro na planilha no dia não aparece "
+    "no Detalhamento Gerencial. Selecione aqui quem você quer forçar a "
+    "aparecer mesmo assim (com Exemplares/SKUs zerados)."
+)
+incluir_sem_registro = st.sidebar.multiselect(
+    "Adicionar ao relatório mesmo sem registro:",
+    [n for n in NOMES_LISTA if n not in remover_do_setor],
+    key="incluir_sem_registro",
+)
 
 st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
 
@@ -1036,12 +1051,12 @@ if uploaded_file:
             else:
                 qtd_exemplares, qtd_skus = 0, 0
 
-            # (antes havia um "if qtd_skus == 0: continue" aqui, que fazia a
-            # pessoa sumir da tabela quando não tinha nenhum registro na
-            # planilha no dia. Isso foi removido por pedido — agora ela
-            # continua aparecendo, com Exemplares/SKUs zerados. Para
-            # ocultá-la manualmente, use o filtro "Ocultar do Setor" no
-            # sidebar.)
+            # Quem não tem nenhum registro na planilha no dia (SKUs = 0) só
+            # aparece na tabela se tiver sido explicitamente selecionado(a)
+            # em "➕ Incluir Sem Registro na Planilha" no sidebar. Caso
+            # contrário, continua oculto(a) como no comportamento original.
+            if qtd_skus == 0 and n not in incluir_sem_registro:
+                continue
 
             historico_justificativas = []
             for m in mov["movimentacoes"]:
