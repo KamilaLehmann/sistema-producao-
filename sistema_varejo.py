@@ -309,7 +309,7 @@ DEFAULT_EQUIPE = {
         {"nome": "Paula Roberta", "alias_excel": "PAULA ROBERTA SANTOS DA SILVA"},
         {"nome": "Weliton"},
         {"nome": "Ellen Kelly"},
-       {"nome": "EloizeM "},
+       {"nome": "eloizem"},
     ],
 }
 
