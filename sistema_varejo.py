@@ -305,7 +305,7 @@ DEFAULT_EQUIPE = {
         {"nome": "Karoline Gonçalves"},
         {"nome": "Gabriele"},
         {"nome": "Beatriz Mascarenhas"},
-        {"nome": "Graziela Pereira", "alias_excel": "GRAZIELA PEREIRA DO NASCIMENTO"},
+        {"nome": "Vinicius Silva", "alias_excel": "Vinicius Silva"},
         {"nome": "Paula Roberta", "alias_excel": "PAULA ROBERTA SANTOS DA SILVA"},
         {"nome": "Weliton"},
         {"nome": "Ellen Kelly"},
