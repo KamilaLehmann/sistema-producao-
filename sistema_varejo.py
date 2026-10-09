@@ -25,9 +25,11 @@ adicionar manualmente). Novidades desta versão:
  24. Tabela ordenada por cargo (Líder → Apoio → Operador) e depois por
      exemplares; cargos com selo colorido, avatar com iniciais e % de meta
      individual com cor de status.
- 25. Novo layout: cabeçalho, 4 indicadores com barra de progresso e status,
+ 25. Novo layout: cabeçalho, indicadores com barra de progresso,
      abas (Detalhamento / Imagem / Histórico / E-mail) e lateral organizada
      em seções recolhíveis.
+ 26. Indicadores simplificados: apenas Total de exemplares e Total de SKU,
+     sem selos de status e sem os cards de colaboradores/média.
 
 Observação: em Streamlit Cloud o disco é temporário. Para persistência
 definitiva em nuvem, guarde esses JSON/CSV em banco ou Google Sheets.
@@ -1296,26 +1298,15 @@ def gerar_excel_gerencial(df_real):
     return buffer.getvalue()
 
 
-def status_meta(pct):
-    if pct >= 1:
-        return "Meta batida", "ok"
-    if pct >= 0.7:
-        return "No ritmo", "warn"
-    return "Abaixo da meta", "bad"
-
-
 def card_html(icone, titulo, valor, sub, pct=None, accent="#2563EB"):
-    chip = ""
     barra = ""
     if pct is not None:
-        texto_status, cls = status_meta(pct)
-        chip = f"<span class='chip chip-{cls}'>{texto_status}</span>"
         largura = max(min(pct, 1.0), 0.0) * 100
         barra = (f"<div class='bar'><div class='bar-fill' "
                  f"style='width:{largura:.1f}%; background:{accent};'></div></div>")
     return (
         f"<div class='card-kpi' style='--accent-color:{accent};'>"
-        f"<div class='card-top'><div class='card-icon'>{icone}</div>{chip}</div>"
+        f"<div class='card-top'><div class='card-icon'>{icone}</div></div>"
         f"<div class='card-title'>{titulo}</div>"
         f"<div class='card-value'>{valor}</div>"
         f"<div class='card-sub'>{sub}</div>{barra}</div>"
@@ -1528,14 +1519,10 @@ if uploaded_file:
     # ------------------------------------------------------------------
     if not df_real.empty:
         ativos = int((df_real["SKUs"] > 0).sum())
-        linha_destaque = df_real.loc[df_real["Exemplares"].idxmax()]
-        destaque_txt = f"{linha_destaque['Colaboradora']} ({int(linha_destaque['Exemplares']):,} un)"
     else:
         ativos = 0
-        destaque_txt = "—"
-    media_por_pessoa = int(total_exemplares / ativos) if ativos else 0
 
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2 = st.columns(2)
     with k1:
         st.markdown(card_html(
             "📦", "Total de exemplares", f"{total_exemplares:,} un",
@@ -1546,14 +1533,6 @@ if uploaded_file:
             "🏷️", "Total de SKU", f"{total_skus:,}",
             f"Meta diária {META_SKUS:,} — atingido {pct_skus:.1%}",
             pct_skus, "#0D9488"), unsafe_allow_html=True)
-    with k3:
-        st.markdown(card_html(
-            "👥", "Colaboradores ativos", f"{ativos}",
-            f"{len(NOMES_LISTA)} na equipe cadastrada", None, "#7C3AED"), unsafe_allow_html=True)
-    with k4:
-        st.markdown(card_html(
-            "⚡", "Média por colaborador", f"{media_por_pessoa:,} un",
-            f"Destaque: {html.escape(destaque_txt)}", None, "#EA580C"), unsafe_allow_html=True)
 
     # Imagem gerada uma vez e usada nas abas de imagem e e-mail
     imagem_relatorio = gerar_relatorio_imagem(
