@@ -3,46 +3,34 @@ Painel Executivo de Produção — Varejo
 ======================================
 Requisitos: streamlit>=1.32, pandas, openpyxl, matplotlib
 
-Melhorias implementadas nesta versão em relação ao script original:
-  (obs.: o login por senha foi removido a pedido — o painel fica sem
-  proteção de acesso, igual ao comportamento original)
-  2. Leitura da planilha por CABEÇALHO de coluna (TOTAL / USUARIO), com aviso
-     caso precise cair para a posição fixa (colunas I/M) por compatibilidade.
-  3. Remoção dos números de fallback fixos (50271 / 1104): agora, se a
-     planilha não tiver dados válidos, o painel avisa claramente em vez de
-     mostrar números "fantasmas".
-  4. Alerta de nomes encontrados na planilha que não batem com ninguém da
-     equipe cadastrada (evita gente "sumir" do relatório sem ninguém notar).
-  5. Cache da leitura da planilha (st.cache_data) para não reprocessar tudo
-     a cada clique no sidebar.
-  6. Equipe configurável via JSON editável na própria interface (sem precisar
-     mexer no código para adicionar/remover pessoas, alias de Excel ou metas
-     individuais).
-  7. Horários de movimentação via tabela editável (st.data_editor) com
-     colunas de hora, no lugar de vários text_input soltos + botões de
-     add/remover linha.
-  8. Histórico diário salvo em CSV local + gráfico de evolução (tendência).
-  9. Metas individuais opcionais por colaborador (além da meta do setor).
- 10. Envio de e-mail direto por SMTP (opcional, configurável no sidebar).
- 11. Exportação da tabela gerencial em Excel (.xlsx), além da imagem PNG.
- 12. Tabela do detalhamento gerencial mais compacta (linhas menores, sem
-     alterar o conteúdo do texto), com opção de editá-la como planilha e de
-     ocultar/exibir Exemplares e SKUs individuais sob demanda.
- 13. Coluna "Movimentação Operacional" agora aceita texto livre editado à mão
-     (persistido por pessoa + data, sobrepondo o texto gerado automaticamente
-     a partir dos horários), com botão para restaurar o texto automático.
- 14. Horários de Saída/Retorno/Local do sidebar agora podem ser salvos por
-     pessoa (botão "💾 Salvar") para não precisar digitar de novo a cada vez
-     que ela for movimentada, com botão "🔄 Resetar" para voltar ao padrão.
- 15. E-mail agora é enviado em HTML, com a imagem do relatório embutida
-     diretamente no corpo (igual ao modelo mostrado pelo usuário), em vez de
-     ir só como anexo separado.
- 16. Nova seção no sidebar "➕ Adicionar Manualmente ao Relatório": digite um
-     nome e clique em Adicionar para incluí-lo(a) no Detalhamento Gerencial,
-     mesmo que não esteja na equipe cadastrada e mesmo sem registro na
-     planilha no dia (não depende da seção de Movimentação). O comportamento
-     padrão da equipe cadastrada continua o mesmo de antes: quem tem SKUs
-     zerados no dia não aparece automaticamente na tabela.
+Tudo que já existia continua funcionando (leitura por cabeçalho, ausências,
+movimentação, texto livre, horários salvos, imagem, Excel, e-mail em HTML,
+adicionar manualmente). Novidades desta versão:
+
+ 17. NOVOS COLABORADORES SEM DIGITAR: nomes que aparecem na planilha e não
+     estão na equipe viram uma lista na lateral ("🆕 Novos na planilha").
+     Marque quem entra, escolha o cargo e clique em Cadastrar. Também há o
+     botão Vincular (mesma pessoa com outro nome na planilha) e Ignorar
+     (nomes que não são da equipe, para o aviso parar de aparecer).
+ 18. EQUIPE EDITÁVEL COMO PLANILHA (st.data_editor) no lugar do JSON: nome,
+     cargo, nome na planilha, meta individual e horários padrão.
+ 19. PERSISTÊNCIA EM DISCO: equipe, pessoas adicionadas manualmente, metas e
+     destinatários agora sobrevivem a recarregar a página/reiniciar o app.
+ 20. METAS DO SETOR editáveis na lateral (antes fixas no código).
+ 21. HISTÓRICO DIÁRIO (CSV) + gráficos de evolução na aba "Histórico".
+ 22. Bug corrigido: o campo de "Adicionar manualmente" agora usa st.form
+     (clear_on_submit) e não gera mais StreamlitAPIException.
+ 23. SMTP: usuário/senha podem vir de st.secrets (SMTP_HOST, SMTP_PORT,
+     SMTP_USUARIO, SMTP_SENHA). Destinatários ficam salvos.
+ 24. Tabela ordenada por cargo (Líder → Apoio → Operador) e depois por
+     exemplares; cargos com selo colorido, avatar com iniciais e % de meta
+     individual com cor de status.
+ 25. Novo layout: cabeçalho, 4 indicadores com barra de progresso e status,
+     abas (Detalhamento / Imagem / Histórico / E-mail) e lateral organizada
+     em seções recolhíveis.
+
+Observação: em Streamlit Cloud o disco é temporário. Para persistência
+definitiva em nuvem, guarde esses JSON/CSV em banco ou Google Sheets.
 """
 
 import streamlit as st
@@ -54,6 +42,7 @@ import io
 import os
 import json
 import html
+import numbers
 import textwrap
 import unicodedata
 import smtplib
@@ -68,228 +57,244 @@ import matplotlib.patches as mpatches
 # =============================================================================
 # 0. CONSTANTES DE ARQUIVO
 # =============================================================================
-MOV_OVERRIDES_PATH = "movimentacoes_manuais.json"  # texto livre digitado na coluna Movimentação Operacional
-HORARIOS_SALVOS_PATH = "horarios_salvos.json"  # horários de Saída/Retorno/Local salvos por pessoa (sidebar)
-
-# (constantes/função de senha removidas junto com o login — ver comentário
-# na seção 2 abaixo caso queira reativar o acesso restrito no futuro)
+MOV_OVERRIDES_PATH = "movimentacoes_manuais.json"
+HORARIOS_SALVOS_PATH = "horarios_salvos.json"
+EQUIPE_CONFIG_PATH = "equipe_config.json"
+PESSOAS_MANUAIS_PATH = "pessoas_manuais.json"
+CONFIGURACOES_PATH = "configuracoes.json"
+HISTORICO_PATH = "historico_diario.csv"
 
 
 # =============================================================================
-# 1. Configuração e Estilização de Design Premium (HTML / CSS)
+# 1. Configuração da página e estilo
 # =============================================================================
-st.set_page_config(page_title="Dashboard Executivo Varejo", layout="wide")
+st.set_page_config(page_title="Painel Executivo de Produção", page_icon="📊", layout="wide")
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #F4F6FA; }
+    .block-container { padding-top: 1.4rem; padding-bottom: 2rem; max-width: 96%; }
+    footer { visibility: hidden; }
 
-    .stApp { background-color: #F8FAFC; }
-
-    .block-container {padding-top: 1.2rem; padding-bottom: 0rem; max-width: 96%;}
-
+    /* ---------- Lateral ---------- */
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF;
         border-right: 1px solid #E5E7EB;
     }
+    section[data-testid="stSidebar"] h2,
     section[data-testid="stSidebar"] h3 {
         font-family: 'Sora', sans-serif;
         color: #0F172A !important;
-        font-size: 0.95rem !important;
+        letter-spacing: -0.2px;
+    }
+    section[data-testid="stSidebar"] h3 { font-size: 0.98rem !important; }
+    section[data-testid="stSidebar"] details {
+        border: 1px solid #E5E7EB !important;
+        border-radius: 12px !important;
+        background: #FBFCFE;
+    }
+    section[data-testid="stSidebar"] details summary p { font-weight: 600; color: #0F172A; }
+
+    /* ---------- Cabeçalho ---------- */
+    .hero {
+        display: flex; justify-content: space-between; align-items: center; gap: 16px;
+        background: #0B1B3A;
+        background-image: linear-gradient(115deg, #0B1B3A 0%, #12306B 62%, #1D4ED8 130%);
+        border-radius: 18px;
+        padding: 22px 28px;
+        margin-bottom: 22px;
+        box-shadow: 0 10px 28px rgba(11, 27, 58, 0.22);
+    }
+    .hero-left { display: flex; align-items: center; gap: 16px; }
+    .hero-logo { line-height: 0; }
+    .hero-title {
+        font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.55rem;
+        letter-spacing: -0.5px; color: #FFFFFF; line-height: 1.15;
+    }
+    .hero-sub { color: #A9BBDD; font-size: 0.88rem; margin-top: 3px; }
+    .hero-right { text-align: right; }
+    .hero-date {
+        font-family: 'Sora', sans-serif; font-weight: 700; font-size: 1.25rem; color: #FFFFFF;
     }
 
+    /* ---------- Indicadores ---------- */
     .card-kpi {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
-        border-left: 4px solid var(--accent-color, #2563EB);
+        border-top: 4px solid var(--accent-color, #2563EB);
         color: #0F172A;
-        padding: 20px 22px;
-        border-radius: 10px;
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-        text-align: left;
+        padding: 18px 20px 16px 20px;
+        border-radius: 14px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.04);
         margin-bottom: 14px;
-        transition: box-shadow 0.2s ease;
+        min-height: 168px;
     }
-    .card-kpi:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
-    .card-title {
-        font-family: 'Sora', sans-serif;
-        font-size: 0.8rem; font-weight: 700; opacity: 0.9; margin-bottom: 6px;
-        letter-spacing: 1px; text-transform: uppercase; color: #64748B;
+    .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .card-icon {
+        width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center;
+        justify-content: center; font-size: 1.05rem;
+        background: color-mix(in srgb, var(--accent-color, #2563EB) 12%, white);
     }
+    .card-title { font-size: 0.86rem; font-weight: 600; color: #64748B; margin-bottom: 4px; }
     .card-value {
-        font-family: 'Sora', sans-serif;
-        font-size: 2.3rem; font-weight: 800; line-height: 1; margin-bottom: 8px;
-        color: #0F172A;
+        font-family: 'Sora', sans-serif; font-size: 2.05rem; font-weight: 800;
+        line-height: 1.05; color: #0F172A; margin-bottom: 6px; letter-spacing: -0.8px;
     }
-    .card-sub { font-size: 0.85rem; font-weight: 600; color: #94A3B8; }
+    .card-sub { font-size: 0.82rem; font-weight: 500; color: #94A3B8; margin-bottom: 10px; }
+    .bar { height: 7px; background: #E8ECF3; border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 99px; }
+    .chip {
+        font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+        white-space: nowrap;
+    }
+    .chip-ok   { background: #DCFCE7; color: #166534; }
+    .chip-warn { background: #FEF3C7; color: #92400E; }
+    .chip-bad  { background: #FEE2E2; color: #991B1B; }
 
-    div.stProgress > div > div > div {
-        background: #2563EB;
-        height: 6px; border-radius: 4px;
+    /* ---------- Abas ---------- */
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #E2E8F0; }
+    .stTabs [data-baseweb="tab"] {
+        height: 46px; padding: 0 18px; font-weight: 600; color: #64748B;
+        border-radius: 10px 10px 0 0;
     }
-    div.stProgress > div > div { background: #E5E7EB; border-radius: 4px; }
+    .stTabs [aria-selected="true"] { color: #0F172A; }
+    .stTabs [data-baseweb="tab-highlight"] { background-color: #2563EB; height: 3px; }
+
+    .secao-titulo {
+        font-family: 'Sora', sans-serif; color: #0F172A; font-size: 1.05rem;
+        font-weight: 700; margin: 6px 0 10px 0; letter-spacing: -0.2px;
+    }
 
     hr { border-color: #E5E7EB !important; }
 
+    /* ---------- Botões e campos ---------- */
     .stButton>button {
-        background: #FFFFFF;
-        border: 1px solid #CBD5E1;
-        color: #0F172A;
-        border-radius: 8px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        transition: all 0.15s ease;
+        background: #FFFFFF; border: 1px solid #CBD5E1; color: #0F172A;
+        border-radius: 10px; font-weight: 600; transition: all 0.15s ease;
     }
-    .stButton>button:hover {
-        border-color: #2563EB;
-        color: #2563EB;
-    }
+    .stButton>button:hover { border-color: #2563EB; color: #2563EB; }
     div[data-testid="stDownloadButton"] button {
-        background: #0F172A;
-        border: 1px solid #0F172A;
-        color: #FFFFFF;
+        background: #0F172A; border: 1px solid #0F172A; color: #FFFFFF; border-radius: 10px;
     }
     div[data-testid="stDownloadButton"] button:hover {
-        background: #1E293B;
-        border-color: #1E293B;
-        color: #FFFFFF;
+        background: #1E293B; border-color: #1E293B; color: #FFFFFF;
     }
-
     .stTextInput>div>div>input, .stDateInput input {
-        background-color: #FFFFFF;
-        color: #0F172A;
-        border: 1px solid #E2E8F0;
-        border-radius: 6px;
+        background-color: #FFFFFF; color: #0F172A; border: 1px solid #E2E8F0; border-radius: 8px;
     }
     .stTextInput>div>div>input:focus { border-color: #2563EB; }
-
     div[data-testid="stDataFrame"] {
-        border: 1px solid #E5E7EB;
-        border-radius: 10px;
-        overflow: hidden;
+        border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden;
     }
 
-    /* Tabela gerencial em HTML (bordas arredondadas + quebra de texto) */
+    /* ---------- Tabela gerencial (HTML) ---------- */
     .tabela-wrapper {
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.07);
-        margin-bottom: 16px;
+        border: 1px solid #E2E8F0; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.04);
+        margin-bottom: 16px; background: #FFFFFF;
     }
     table.tabela-gerencial {
-        width: 100%;
-        border-collapse: collapse;
-        font-family: 'Inter', sans-serif;
-        font-size: 0.86rem;
-        table-layout: fixed;
+        width: 100%; border-collapse: collapse; font-size: 0.86rem; table-layout: fixed;
     }
     table.tabela-gerencial thead th {
-        background: #0F172A;
-        color: #FFFFFF;
-        text-align: left;
-        padding: 9px 14px;
-        font-weight: 600;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
+        background: #0F172A; color: #FFFFFF; text-align: left; padding: 11px 14px;
+        font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1px;
     }
     table.tabela-gerencial tbody td {
-        padding: 6px 14px;
-        border-top: 1px solid #EEF2F6;
-        color: #0F172A;
-        vertical-align: middle;
-        white-space: normal;      /* permite quebra de linha nas colunas de texto livre */
-        overflow-wrap: break-word;
-        line-height: 1.3;
-        font-size: 0.86rem;
+        padding: 7px 14px; border-top: 1px solid #EEF2F6; color: #0F172A;
+        vertical-align: middle; white-space: normal; overflow-wrap: break-word;
+        line-height: 1.35; font-variant-numeric: tabular-nums;
     }
-    /* Cargo e Colaboradora são textos curtos/categóricos: nunca cortam no
-       meio da palavra, ficam sempre em uma linha só. */
     table.tabela-gerencial td:nth-child(1),
     table.tabela-gerencial td:nth-child(2),
     table.tabela-gerencial th:nth-child(1),
-    table.tabela-gerencial th:nth-child(2) {
-        white-space: nowrap;
-    }
-    table.tabela-gerencial tbody tr:nth-child(even) { background: #FAFBFC; }
-    table.tabela-gerencial tbody tr:hover { background: #F1F5F9; }
+    table.tabela-gerencial th:nth-child(2) { white-space: nowrap; }
+    table.tabela-gerencial tbody tr:nth-child(even) { background: #FAFBFD; }
+    table.tabela-gerencial tbody tr:hover { background: #EFF4FF; }
     .tabela-vazia {
-        padding: 18px 16px;
-        color: #64748B;
-        font-size: 0.9rem;
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        background: #FFFFFF;
+        padding: 18px 16px; color: #64748B; font-size: 0.9rem;
+        border: 1px solid #E2E8F0; border-radius: 16px; background: #FFFFFF;
     }
+    .pill { font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+    .pill-lider    { background: #DBEAFE; color: #1E40AF; }
+    .pill-apoio    { background: #FEF3C7; color: #92400E; }
+    .pill-operador { background: #E2E8F0; color: #334155; }
+    .pill-outro    { background: #EDE9FE; color: #5B21B6; }
+    .avatar {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 50%; margin-right: 9px;
+        background: #E0E7FF; color: #3730A3; font-size: 0.7rem; font-weight: 700;
+        vertical-align: middle;
+    }
+    .nome-colab { font-weight: 600; vertical-align: middle; }
+    .txt-ausente { color: #B91C1C; font-weight: 600; }
+
+    /* ---------- Estado vazio ---------- */
+    .vazio {
+        background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 18px;
+        padding: 42px 30px; text-align: center; color: #475569;
+    }
+    .vazio h3 { font-family: 'Sora', sans-serif; color: #0F172A; margin: 0 0 8px 0; font-size: 1.2rem; }
+    .vazio p { margin: 0; font-size: 0.95rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# Logo leve em SVG (substitui o PNG base64 do arquivo original — ver nota no
-# topo do arquivo sobre como restaurar o logo original caso deseje).
-LOGO_REALBRAS_SVG = """<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
-  <rect width="34" height="34" rx="8" fill="#0F172A"/>
-  <path d="M9 24V10h7.5c3.6 0 5.8 1.8 5.8 4.9 0 2.1-1.1 3.6-3 4.3l3.4 4.8h-3.4l-3-4.3H12V24H9zm3-6.7h4.2c1.8 0 2.8-.8 2.8-2.3s-1-2.3-2.8-2.3H12v4.6z" fill="#FFFFFF"/>
-</svg>""".strip()
+LOGO_HERO_SVG = """<svg width="44" height="44" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><rect width="34" height="34" rx="9" fill="#FFFFFF"/><path d="M9 24V10h7.5c3.6 0 5.8 1.8 5.8 4.9 0 2.1-1.1 3.6-3 4.3l3.4 4.8h-3.4l-3-4.3H12V24H9zm3-6.7h4.2c1.8 0 2.8-.8 2.8-2.3s-1-2.3-2.8-2.3H12v4.6z" fill="#0B1B3A"/></svg>"""
 
 
 # =============================================================================
-# 2. LOGIN — DESATIVADO
-# =============================================================================
-# O gate de senha foi removido a pedido. Se quiser reativar no futuro, basta
-# restaurar a função `checar_senha()` (mantida como exemplo abaixo, comentada)
-# e voltar a chamar `if not checar_senha(): st.stop()` antes do cabeçalho.
-#
-# def checar_senha():
-#     if st.session_state.get("autenticado"):
-#         return True
-#
-#     def senha_confirmada():
-#         if st.session_state.get("senha_input") == obter_senha_configurada():
-#             st.session_state["autenticado"] = True
-#         else:
-#             st.session_state["autenticado"] = False
-#
-#     st.markdown(f"""
-#     <div style='display:flex; align-items:center; gap:10px; margin-bottom:18px;'>
-#         {LOGO_REALBRAS_SVG}
-#         <h2 style='font-family: "Sora", sans-serif; font-weight:800; color:#0F172A; margin:0;'>🔒 Acesso Restrito</h2>
-#     </div>
-#     """, unsafe_allow_html=True)
-#     st.text_input("Senha de acesso:", type="password", on_change=senha_confirmada, key="senha_input")
-#     if "autenticado" in st.session_state and not st.session_state["autenticado"]:
-#         st.error("Senha incorreta. Tente novamente.")
-#     st.caption("Dica: configure a senha em `.streamlit/secrets.toml` com a chave `SENHA_PAINEL`.")
-#     return False
-
-# =============================================================================
-# 3. Cabeçalho
-# =============================================================================
-st.markdown(f"""
-<div style='display:flex; align-items:center; gap:10px; margin-bottom:4px;'>
-{LOGO_REALBRAS_SVG}
-<h1 style='font-family: "Sora", sans-serif; font-weight:800; letter-spacing:-0.5px; color: #0F172A; margin:0;'>📊 Painel Executivo de Produção</h1>
-</div>
-<p style='text-align:left; font-family: "Inter", sans-serif; color:#64748B; font-size:0.95rem; margin-top:4px; margin-bottom:28px;'>Varejo · acompanhamento diário de produtividade</p>
-""", unsafe_allow_html=True)
-
-
-# =============================================================================
-# 4. Normalização de texto (evita falha de correspondência de nomes)
+# 2. Utilitários gerais
 # =============================================================================
 def normalizar(texto):
-    """Remove acentos, espaços extras e padroniza para maiúsculas, evitando
-    falhas de correspondência entre o nome cadastrado no painel e o nome como
-    aparece na planilha."""
+    """Remove acentos, espaços extras e padroniza para maiúsculas."""
     texto = str(texto).strip().upper()
     texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("ASCII")
     texto = " ".join(texto.split())
     return texto
 
 
+def texto_seguro(valor):
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(valor)
+
+
+def ler_json(caminho, padrao):
+    if not os.path.exists(caminho):
+        return padrao
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return padrao
+
+
+def gravar_json(caminho, dados):
+    try:
+        with open(caminho, "w", encoding="utf-8") as f:
+            json.dump(dados, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def segredo(chave, padrao=""):
+    """Lê de st.secrets sem quebrar caso o arquivo secrets.toml não exista."""
+    try:
+        return st.secrets.get(chave, padrao)
+    except Exception:
+        return padrao
+
+
 # =============================================================================
-# 5. EQUIPE CONFIGURÁVEL (editável pela interface, sem precisar mexer no código)
+# 3. Equipe (padrão + persistência)
 # =============================================================================
 DEFAULT_EQUIPE = {
     "Líder": [
@@ -309,12 +314,45 @@ DEFAULT_EQUIPE = {
         {"nome": "Paula Roberta", "alias_excel": "PAULA ROBERTA SANTOS DA SILVA"},
         {"nome": "Weliton"},
         {"nome": "Ellen Kelly"},
-       {"nome": "Eloizem", "alias_excel": "Eloize Meire"},
+        {"nome": "Eloizem", "alias_excel": "Eloize Meire"},
     ],
 }
+CARGOS_BASE = ["Líder", "Apoio", "Operador(a)"]
+
+
+def carregar_equipe_disco():
+    dados = ler_json(EQUIPE_CONFIG_PATH, None)
+    return dados if isinstance(dados, dict) and dados else None
+
+
+def salvar_equipe_disco(config):
+    return gravar_json(EQUIPE_CONFIG_PATH, config)
+
+
+def salvar_pessoas_manuais():
+    gravar_json(PESSOAS_MANUAIS_PATH, st.session_state["pessoas_manuais"])
+
+
+def salvar_configuracoes():
+    gravar_json(CONFIGURACOES_PATH, st.session_state["configuracoes"])
+
+
+CONFIG_PADRAO = {"meta_exemplares": 55000, "meta_skus": 1200, "destinatarios": "", "ignorados": []}
 
 if "equipe_config" not in st.session_state:
-    st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))  # cópia profunda
+    st.session_state["equipe_config"] = carregar_equipe_disco() or json.loads(json.dumps(DEFAULT_EQUIPE))
+
+if "pessoas_manuais" not in st.session_state:
+    manuais_disco = ler_json(PESSOAS_MANUAIS_PATH, [])
+    st.session_state["pessoas_manuais"] = manuais_disco if isinstance(manuais_disco, list) else []
+
+if "configuracoes" not in st.session_state:
+    cfg_inicial = dict(CONFIG_PADRAO)
+    cfg_disco = ler_json(CONFIGURACOES_PATH, {})
+    if isinstance(cfg_disco, dict):
+        cfg_inicial.update(cfg_disco)
+    st.session_state["configuracoes"] = cfg_inicial
+
 
 def construir_estruturas_equipe(config):
     equipe = {}
@@ -354,6 +392,60 @@ def nome_excel(nome, alias_map):
     return normalizar(alias_map.get(nome, nome))
 
 
+COLUNAS_EDITOR_EQUIPE = [
+    "Cargo", "Nome", "Alias na planilha", "Meta individual",
+    "Saída padrão", "Retorno padrão", "Local padrão",
+]
+
+
+def config_para_df(config):
+    linhas = []
+    for cargo, pessoas in config.items():
+        for p in pessoas:
+            linhas.append({
+                "Cargo": cargo,
+                "Nome": p.get("nome", ""),
+                "Alias na planilha": p.get("alias_excel", ""),
+                "Meta individual": p.get("meta_exemplares") or None,
+                "Saída padrão": p.get("saida_padrao", ""),
+                "Retorno padrão": p.get("retorno_padrao", ""),
+                "Local padrão": p.get("local_padrao", ""),
+            })
+    df = pd.DataFrame(linhas, columns=COLUNAS_EDITOR_EQUIPE)
+    df["Meta individual"] = pd.to_numeric(df["Meta individual"], errors="coerce")
+    return df
+
+
+def df_para_config(df):
+    nova = {}
+    for _, l in df.iterrows():
+        nome = texto_seguro(l.get("Nome")).strip()
+        if not nome:
+            continue
+        cargo = texto_seguro(l.get("Cargo")).strip() or "Operador(a)"
+        pessoa = {"nome": nome}
+        alias = texto_seguro(l.get("Alias na planilha")).strip()
+        if alias:
+            pessoa["alias_excel"] = alias
+        meta = l.get("Meta individual")
+        try:
+            if meta is not None and not pd.isna(meta) and float(meta) > 0:
+                pessoa["meta_exemplares"] = int(meta)
+        except (TypeError, ValueError):
+            pass
+        for chave, coluna in (("saida_padrao", "Saída padrão"),
+                              ("retorno_padrao", "Retorno padrão"),
+                              ("local_padrao", "Local padrão")):
+            valor = texto_seguro(l.get(coluna)).strip()
+            if valor:
+                pessoa[chave] = valor
+        nova.setdefault(cargo, []).append(pessoa)
+    return nova
+
+
+# =============================================================================
+# 4. Horários, overrides de texto e histórico
+# =============================================================================
 def parse_hora_str(valor_str):
     if not valor_str:
         return None
@@ -447,32 +539,45 @@ def salvar_overrides_disco(overrides):
 
 
 def carregar_horarios_disco():
-    if not os.path.exists(HORARIOS_SALVOS_PATH):
-        return {}
-    try:
-        with open(HORARIOS_SALVOS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    dados = ler_json(HORARIOS_SALVOS_PATH, {})
+    return dados if isinstance(dados, dict) else {}
 
 
 def salvar_horarios_disco(horarios):
+    gravar_json(HORARIOS_SALVOS_PATH, horarios)
+
+
+COLUNAS_HISTORICO = ["Data", "Exemplares", "SKUs", "Colaboradores"]
+
+
+def carregar_historico():
+    if not os.path.exists(HISTORICO_PATH):
+        return pd.DataFrame(columns=COLUNAS_HISTORICO)
     try:
-        with open(HORARIOS_SALVOS_PATH, "w", encoding="utf-8") as f:
-            json.dump(horarios, f, ensure_ascii=False, indent=2)
+        df = pd.read_csv(HISTORICO_PATH)
+        for c in COLUNAS_HISTORICO:
+            if c not in df.columns:
+                df[c] = 0
+        df["Data"] = df["Data"].astype(str)
+        return df[COLUNAS_HISTORICO]
     except Exception:
-        pass
+        return pd.DataFrame(columns=COLUNAS_HISTORICO)
 
 
-def texto_seguro(valor):
-    if valor is None:
-        return ""
+def salvar_historico_dia(data_str, exemplares, skus, colaboradores):
+    df = carregar_historico()
+    df = df[df["Data"] != data_str]
+    novo = pd.DataFrame([{
+        "Data": data_str, "Exemplares": int(exemplares),
+        "SKUs": int(skus), "Colaboradores": int(colaboradores),
+    }])
+    df = novo if df.empty else pd.concat([df, novo], ignore_index=True)
+    df = df.sort_values("Data").reset_index(drop=True)
     try:
-        if pd.isna(valor):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    return str(valor)
+        df.to_csv(HISTORICO_PATH, index=False)
+        return True
+    except Exception:
+        return False
 
 
 if "mov_manual_overrides" not in st.session_state:
@@ -483,112 +588,256 @@ if "horarios_salvos" not in st.session_state:
 
 
 # =============================================================================
-# 6. BARRA LATERAL — Upload, data, configuração de equipe e filtros
+# 5. Leitura da planilha — por CABEÇALHO de coluna, com cache
 # =============================================================================
+def localizar_colunas(sheet):
+    mapeamento = {}
+    for col in range(1, sheet.max_column + 1):
+        valor = sheet.cell(row=1, column=col).value
+        if valor is None:
+            continue
+        v = normalizar(valor)
+        if v == "TOTAL" and "TOTAL" not in mapeamento:
+            mapeamento["TOTAL"] = col
+        if v == "USUARIO" and "USUARIO" not in mapeamento:
+            mapeamento["USUARIO"] = col
+    return mapeamento
+
+
+@st.cache_data(show_spinner="Lendo planilha...")
+def ler_planilha(bytes_arquivo):
+    wb = openpyxl.load_workbook(io.BytesIO(bytes_arquivo), data_only=True)
+    sheet = wb.active
+
+    mapeamento = localizar_colunas(sheet)
+    usando_fallback = ("TOTAL" not in mapeamento) or ("USUARIO" not in mapeamento)
+    col_total = mapeamento.get("TOTAL", 9)
+    col_usuario = mapeamento.get("USUARIO", 13)
+
+    dados = []
+    for row in range(2, sheet.max_row + 1):
+        if sheet.row_dimensions[row].hidden:
+            continue
+        val_total = sheet.cell(row=row, column=col_total).value
+        val_usuario = sheet.cell(row=row, column=col_usuario).value
+        if val_total is not None and val_usuario is not None:
+            dados.append({"TOTAL": val_total, "USUARIO": normalizar(val_usuario)})
+
+    df = pd.DataFrame(dados, columns=["TOTAL", "USUARIO"])
+    if not df.empty:
+        df["TOTAL"] = pd.to_numeric(df["TOTAL"], errors="coerce").fillna(0)
+
+    return df, usando_fallback
+
+
+# =============================================================================
+# 6. BARRA LATERAL
+# =============================================================================
+cfg = st.session_state["configuracoes"]
+
 st.sidebar.header("🛠️ Controle Operacional")
-uploaded_file = st.sidebar.file_uploader("Upload da Planilha Excel", type=["xlsx"], key="uploaded_file")
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
-
+# ---- Dados -----------------------------------------------------------------
+uploaded_file = st.sidebar.file_uploader("Planilha de produção (.xlsx)", type=["xlsx"], key="uploaded_file")
 data_produtividade = st.sidebar.date_input(
-    "Data da Produtividade:", datetime.now(ZoneInfo("America/Sao_Paulo")), key="data_produtividade"
+    "Data da produtividade:", datetime.now(ZoneInfo("America/Sao_Paulo")), key="data_produtividade"
 )
 data_formatada = data_produtividade.strftime("%d/%m")
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
-
-with st.sidebar.expander("⚙️ Configurar Equipe (avançado)"):
-    st.caption(
-        "Edite o JSON abaixo para adicionar/remover pessoas, corrigir o nome "
-        "como aparece na planilha (`alias_excel`) ou definir uma meta "
-        "individual (`meta_exemplares`). Clique em Aplicar para salvar."
+# ---- Metas do setor --------------------------------------------------------
+with st.sidebar.expander("🎯 Metas do setor"):
+    nova_meta_ex = st.number_input(
+        "Meta diária de exemplares:", min_value=1, value=int(cfg["meta_exemplares"]), step=500, key="meta_ex_input"
     )
-    texto_config = st.text_area(
-        "Configuração da equipe (JSON):",
-        value=json.dumps(st.session_state["equipe_config"], ensure_ascii=False, indent=2),
-        height=220,
-        key="texto_config_equipe",
+    nova_meta_sku = st.number_input(
+        "Meta diária de SKUs:", min_value=1, value=int(cfg["meta_skus"]), step=50, key="meta_sku_input"
+    )
+    if int(nova_meta_ex) != int(cfg["meta_exemplares"]) or int(nova_meta_sku) != int(cfg["meta_skus"]):
+        cfg["meta_exemplares"] = int(nova_meta_ex)
+        cfg["meta_skus"] = int(nova_meta_sku)
+        salvar_configuracoes()
+
+META_EXEMPLARES = int(cfg["meta_exemplares"])
+META_SKUS = int(cfg["meta_skus"])
+
+# ---- Equipe (editor em tabela) --------------------------------------------
+with st.sidebar.expander("👥 Equipe (editar como planilha)"):
+    st.caption(
+        "Adicione linhas no fim da tabela para cadastrar alguém, edite células ou "
+        "selecione uma linha e apague. 'Alias na planilha' é o nome exatamente como "
+        "aparece na coluna USUARIO (só preencha se for diferente do nome). "
+        "Clique em Aplicar para salvar."
+    )
+    cargos_disponiveis = list(dict.fromkeys(CARGOS_BASE + list(st.session_state["equipe_config"].keys())))
+    editor_equipe = st.data_editor(
+        config_para_df(st.session_state["equipe_config"]),
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        key="editor_equipe",
+        column_config={
+            "Cargo": st.column_config.SelectboxColumn("Cargo", options=cargos_disponiveis, required=True),
+            "Nome": st.column_config.TextColumn("Nome", required=True),
+            "Alias na planilha": st.column_config.TextColumn("Alias na planilha"),
+            "Meta individual": st.column_config.NumberColumn("Meta individual", min_value=0, step=100),
+            "Saída padrão": st.column_config.TextColumn("Saída padrão", help="Formato HH:MM"),
+            "Retorno padrão": st.column_config.TextColumn("Retorno padrão", help="Formato HH:MM"),
+            "Local padrão": st.column_config.TextColumn("Local padrão"),
+        },
     )
     col_aplicar, col_restaurar = st.columns(2)
     with col_aplicar:
-        if st.button("✅ Aplicar", use_container_width=True):
-            try:
-                nova_config = json.loads(texto_config)
-                if not isinstance(nova_config, dict):
-                    raise ValueError("O JSON precisa ser um objeto com cargos como chaves.")
+        if st.button("✅ Aplicar", use_container_width=True, key="btn_aplicar_equipe"):
+            nova_config = df_para_config(editor_equipe)
+            nomes_novos = [p["nome"] for pessoas in nova_config.values() for p in pessoas]
+            duplicados = sorted({n for n in nomes_novos if nomes_novos.count(n) > 1})
+            if not nova_config:
+                st.error("A equipe não pode ficar vazia.")
+            elif duplicados:
+                st.error("Nomes repetidos: " + ", ".join(duplicados))
+            else:
                 st.session_state["equipe_config"] = nova_config
-                st.success("Configuração de equipe atualizada.")
+                salvar_equipe_disco(nova_config)
+                st.session_state.pop("editor_equipe", None)
                 st.rerun()
-            except Exception as e:
-                st.error(f"JSON inválido: {e}")
     with col_restaurar:
-        if st.button("↩️ Restaurar padrão", use_container_width=True):
+        if st.button("↩️ Padrão", use_container_width=True, key="btn_restaurar_equipe"):
             st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))
-            st.session_state.pop("texto_config_equipe", None)
+            salvar_equipe_disco(st.session_state["equipe_config"])
+            st.session_state.pop("editor_equipe", None)
             st.rerun()
 
 EQUIPE, NOMES_LISTA, ALIAS_EXCEL, METAS_INDIVIDUAIS, DEFAULTS_MOV, CARGO_POR_NOME = construir_estruturas_equipe(
     st.session_state["equipe_config"]
 )
+CARGOS_ORDEM = list(EQUIPE.keys())
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+# ---- Novos colaboradores detectados na planilha ---------------------------
+if uploaded_file:
+    df_previa, _ = ler_planilha(uploaded_file.getvalue())
+    if not df_previa.empty:
+        validos = {nome_excel(n, ALIAS_EXCEL) for n in NOMES_LISTA}
+        ignorados = set(cfg.get("ignorados", []))
+        skus_por_usuario = df_previa.groupby("USUARIO").size().to_dict()
+        novos = sorted(set(skus_por_usuario) - validos - ignorados)
 
-st.sidebar.markdown("### 👁️ Filtros Gerenciais")
-remover_do_setor = st.sidebar.multiselect("Ocultar do Setor (Tabela):", NOMES_LISTA, key="remover_do_setor")
+        if novos:
+            with st.sidebar.expander(f"🆕 Novos na planilha ({len(novos)})", expanded=True):
+                st.caption("Nomes que aparecem na planilha, mas não estão na equipe.")
+                escolhidos = st.multiselect(
+                    "Quem entra na equipe?",
+                    novos,
+                    format_func=lambda u: f"{u.title()} ({skus_por_usuario[u]} SKUs)",
+                    key="novos_escolhidos",
+                )
+                cargo_novo = st.selectbox(
+                    "Cargo:", list(dict.fromkeys(CARGOS_BASE + CARGOS_ORDEM)), key="cargo_novos"
+                )
+                col_cad, col_ign = st.columns(2)
+                with col_cad:
+                    if st.button("✅ Cadastrar", use_container_width=True, key="btn_cadastrar_novos"):
+                        if not escolhidos:
+                            st.warning("Marque ao menos um nome.")
+                        else:
+                            cfg_equipe = st.session_state["equipe_config"]
+                            for u in escolhidos:
+                                cfg_equipe.setdefault(cargo_novo, []).append(
+                                    {"nome": u.title(), "alias_excel": u}
+                                )
+                            salvar_equipe_disco(cfg_equipe)
+                            st.session_state.pop("novos_escolhidos", None)
+                            st.session_state.pop("editor_equipe", None)
+                            st.rerun()
+                with col_ign:
+                    if st.button("🙈 Ignorar", use_container_width=True, key="btn_ignorar_novos",
+                                 help="Não são da equipe: o aviso deixa de aparecer para estes nomes."):
+                        if not escolhidos:
+                            st.warning("Marque ao menos um nome.")
+                        else:
+                            cfg["ignorados"] = sorted(set(cfg.get("ignorados", [])) | set(escolhidos))
+                            salvar_configuracoes()
+                            st.session_state.pop("novos_escolhidos", None)
+                            st.rerun()
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+                st.markdown("---")
+                st.caption("É a mesma pessoa com outro nome na planilha?")
+                u_alias = st.selectbox("Nome na planilha:", ["—"] + novos, key="u_alias")
+                p_alias = st.selectbox("Corresponde a:", ["—"] + NOMES_LISTA, key="p_alias")
+                if st.button("🔗 Vincular", use_container_width=True, key="btn_vincular"):
+                    if u_alias == "—" or p_alias == "—":
+                        st.warning("Escolha o nome da planilha e a pessoa.")
+                    else:
+                        for pessoas in st.session_state["equipe_config"].values():
+                            for p in pessoas:
+                                if p["nome"] == p_alias:
+                                    p["alias_excel"] = u_alias
+                        salvar_equipe_disco(st.session_state["equipe_config"])
+                        st.session_state.pop("editor_equipe", None)
+                        st.rerun()
 
-st.sidebar.markdown("### ➕ Adicionar Manualmente ao Relatório")
-st.sidebar.caption(
-    "Digite um nome e adicione à tabela do Detalhamento Gerencial, mesmo que "
-    "a pessoa não esteja na equipe cadastrada ou não tenha registro na "
-    "planilha no dia. Não precisa passar pela seção de Movimentação."
-)
-
-if "pessoas_manuais" not in st.session_state:
-    st.session_state["pessoas_manuais"] = []
-
-novo_nome_manual = st.sidebar.text_input("Nome da pessoa:", key="novo_nome_manual")
-novo_cargo_manual = st.sidebar.selectbox(
-    "Cargo:", list(EQUIPE.keys()) + ["Outro"], key="novo_cargo_manual"
-)
-if st.sidebar.button("➕ Adicionar à tabela", use_container_width=True):
-    nome_limpo = novo_nome_manual.strip()
-    if not nome_limpo:
-        st.sidebar.warning("Digite um nome antes de adicionar.")
-    elif nome_limpo in NOMES_LISTA or any(
-        p["nome"] == nome_limpo for p in st.session_state["pessoas_manuais"]
-    ):
-        st.sidebar.warning("Esse nome já está na equipe ou já foi adicionado.")
-    else:
-        st.session_state["pessoas_manuais"].append({"nome": nome_limpo, "cargo": novo_cargo_manual})
-        st.session_state["novo_nome_manual"] = ""
-        st.rerun()
-
-if st.session_state["pessoas_manuais"]:
-    st.sidebar.caption("Adicionados manualmente:")
-    for i, pessoa in enumerate(st.session_state["pessoas_manuais"]):
-        col_nome_add, col_remover_add = st.sidebar.columns([3, 1])
-        col_nome_add.markdown(f"👤 {pessoa['nome']} · {pessoa['cargo']}")
-        if col_remover_add.button("🗑️", key=f"remover_manual_{i}", use_container_width=True):
-            st.session_state["pessoas_manuais"].pop(i)
+if cfg.get("ignorados"):
+    with st.sidebar.expander(f"🙈 Nomes ignorados ({len(cfg['ignorados'])})"):
+        st.caption(", ".join(n.title() for n in cfg["ignorados"]))
+        if st.button("Voltar a avisar sobre todos", use_container_width=True, key="btn_limpar_ignorados"):
+            cfg["ignorados"] = []
+            salvar_configuracoes()
             st.rerun()
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
-st.sidebar.markdown("### ❌ Ausências do Dia")
-faltas_selecionadas = st.sidebar.multiselect("Selecione quem faltou hoje:", NOMES_LISTA, key="faltas_selecionadas")
+# ---- Filtros ---------------------------------------------------------------
+st.sidebar.markdown("### 👁️ Filtros gerenciais")
+remover_do_setor = st.sidebar.multiselect("Ocultar do setor (tabela):", NOMES_LISTA, key="remover_do_setor")
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+# ---- Adicionar manualmente (corrigido: st.form + clear_on_submit) --------
+with st.sidebar.expander("➕ Adicionar manualmente ao relatório"):
+    st.caption(
+        "Inclui uma pessoa na tabela do Detalhamento Gerencial mesmo que ela não "
+        "esteja na equipe ou não tenha registro na planilha no dia."
+    )
+    with st.form("form_adicionar_manual", clear_on_submit=True):
+        novo_nome_manual = st.text_input("Nome da pessoa:")
+        novo_cargo_manual = st.selectbox("Cargo:", list(EQUIPE.keys()) + ["Outro"])
+        enviado_manual = st.form_submit_button("➕ Adicionar à tabela", use_container_width=True)
 
-st.sidebar.markdown("### ⏳ Movimentação de Horários")
+    if enviado_manual:
+        nome_limpo = novo_nome_manual.strip()
+        if not nome_limpo:
+            st.warning("Digite um nome antes de adicionar.")
+        elif nome_limpo in NOMES_LISTA or any(p["nome"] == nome_limpo for p in st.session_state["pessoas_manuais"]):
+            st.warning("Esse nome já está na equipe ou já foi adicionado.")
+        else:
+            st.session_state["pessoas_manuais"].append({"nome": nome_limpo, "cargo": novo_cargo_manual})
+            salvar_pessoas_manuais()
+            st.rerun()
+
+    if st.session_state["pessoas_manuais"]:
+        st.caption("Adicionados manualmente:")
+        for i, pessoa in enumerate(st.session_state["pessoas_manuais"]):
+            col_nome_add, col_remover_add = st.columns([3, 1])
+            col_nome_add.markdown(f"👤 {pessoa['nome']} ({pessoa['cargo']})")
+            if col_remover_add.button("🗑️", key=f"remover_manual_{i}", use_container_width=True):
+                st.session_state["pessoas_manuais"].pop(i)
+                salvar_pessoas_manuais()
+                st.rerun()
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
+
+# ---- Ausências -------------------------------------------------------------
+st.sidebar.markdown("### ❌ Ausências do dia")
+faltas_selecionadas = st.sidebar.multiselect("Quem faltou hoje:", NOMES_LISTA, key="faltas_selecionadas")
+
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
+
+# ---- Movimentação ----------------------------------------------------------
+st.sidebar.markdown("### ⏳ Movimentação de horários")
 movimentados_selecionados = st.sidebar.multiselect(
     "🚚 Quem foi movimentado(a) hoje?",
     [n for n in NOMES_LISTA if n not in remover_do_setor and n not in faltas_selecionadas],
     key="movimentados_selecionados",
 )
 
-st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+st.sidebar.markdown("<hr style='margin:14px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
 MOTIVOS_FALTA_PADRAO = ["Falta administrativa", "Atestado médico", "Falta injustificada", "Folga compensatória", "Outro"]
 
@@ -599,7 +848,7 @@ for cargo, integrantes in EQUIPE.items():
     integrantes_visiveis = [i for i in integrantes if i not in remover_do_setor]
     if integrantes_visiveis:
         st.sidebar.markdown(
-            f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.1rem;'>🔹 {cargo.upper()}</h3>",
+            f"<h3 style='color:#1E3A8A; margin-top:10px; font-size:1.05rem;'>🔹 {html.escape(cargo)}</h3>",
             unsafe_allow_html=True,
         )
 
@@ -611,7 +860,7 @@ for cargo, integrantes in EQUIPE.items():
         is_movimentado = op in movimentados_selecionados
 
         if is_ausente:
-            st.sidebar.markdown(f"❌ **{op} (AUSENTE)**")
+            st.sidebar.markdown(f"❌ **{op} (ausente)**")
             motivo_escolhido = st.sidebar.selectbox(
                 f"Motivo da falta de {op}:", MOTIVOS_FALTA_PADRAO, key=f"mot_falta_sel_{op}"
             )
@@ -701,34 +950,44 @@ for cargo, integrantes in EQUIPE.items():
             )
             dict_movimentacao[op] = {"cargo": cargo, "movimentacoes": []}
 
-        st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #D1D5DB;'>", unsafe_allow_html=True)
+        st.sidebar.markdown("<hr style='margin:6px 0px; border-color: #E5E7EB;'>", unsafe_allow_html=True)
 
 
-# =============================================================================
-# 7. Configuração de e-mail (SMTP) — opcional
-# =============================================================================
-with st.sidebar.expander("✉️ Configuração de E-mail (SMTP)"):
+# ---- E-mail (SMTP) ---------------------------------------------------------
+with st.sidebar.expander("✉️ Configuração de e-mail (SMTP)"):
     st.caption(
-        "Preencha para habilitar o envio direto do relatório por e-mail. "
-        "Por segurança, prefira configurar a senha em `st.secrets` em vez de digitá-la aqui."
+        "Para mais segurança, defina SMTP_HOST, SMTP_PORT, SMTP_USUARIO e SMTP_SENHA "
+        "em `.streamlit/secrets.toml`. Quando existirem, os campos correspondentes "
+        "somem daqui."
     )
-    smtp_host = st.text_input("Servidor SMTP:", value="smtp.gmail.com", key="smtp_host")
-    smtp_port = st.number_input("Porta:", value=587, step=1, key="smtp_port")
-    smtp_usuario = st.text_input("E-mail remetente:", key="smtp_usuario")
-    smtp_senha = st.text_input("Senha / senha de app:", type="password", key="smtp_senha")
-    destinatarios_texto = st.text_input("Destinatários (separados por vírgula):", key="smtp_destinatarios")
+    smtp_host = st.text_input("Servidor SMTP:", value=str(segredo("SMTP_HOST", "smtp.gmail.com")), key="smtp_host")
+    smtp_port = st.number_input("Porta:", value=int(segredo("SMTP_PORT", 587)), step=1, key="smtp_port")
+
+    usuario_secret = segredo("SMTP_USUARIO", "")
+    if usuario_secret:
+        smtp_usuario = str(usuario_secret)
+        st.caption(f"Remetente (via secrets): {smtp_usuario}")
+    else:
+        smtp_usuario = st.text_input("E-mail remetente:", key="smtp_usuario")
+
+    senha_secret = segredo("SMTP_SENHA", "")
+    if senha_secret:
+        smtp_senha = str(senha_secret)
+        st.caption("Senha carregada de st.secrets.")
+    else:
+        smtp_senha = st.text_input("Senha / senha de app:", type="password", key="smtp_senha")
+
+    destinatarios_texto = st.text_input(
+        "Destinatários (separados por vírgula):", value=cfg.get("destinatarios", ""), key="smtp_destinatarios"
+    )
+    if destinatarios_texto != cfg.get("destinatarios", ""):
+        cfg["destinatarios"] = destinatarios_texto
+        salvar_configuracoes()
 
 
 def enviar_email_relatorio(assunto, corpo_texto, corpo_html, imagem_bytes, nome_imagem, cid_imagem):
-    """Envia o relatório por e-mail em HTML, com a imagem do painel embutida
-    diretamente no corpo da mensagem (via Content-ID) — igual ao modelo em
-    que o texto vem primeiro e a imagem aparece logo abaixo de
-    'Observações do Dia:', em vez de só como anexo separado.
-
-    A mensagem é multipart/alternative (texto simples + HTML) dentro de um
-    envelope multipart/related, que é onde a imagem embutida entra. Isso
-    garante que clientes que não renderizam HTML ainda recebam o texto puro
-    como alternativa."""
+    """Envia o relatório em HTML com a imagem do painel embutida no corpo
+    (Content-ID), mais uma versão em texto simples como alternativa."""
     destinatarios = [d.strip() for d in destinatarios_texto.split(",") if d.strip()]
     if not (smtp_host and smtp_usuario and smtp_senha and destinatarios):
         st.error("Preencha servidor, remetente, senha e ao menos um destinatário na configuração de e-mail.")
@@ -760,50 +1019,7 @@ def enviar_email_relatorio(assunto, corpo_texto, corpo_html, imagem_bytes, nome_
 
 
 # =============================================================================
-# 8. Leitura da planilha — por CABEÇALHO de coluna, com cache e avisos claros
-# =============================================================================
-def localizar_colunas(sheet):
-    mapeamento = {}
-    for col in range(1, sheet.max_column + 1):
-        valor = sheet.cell(row=1, column=col).value
-        if valor is None:
-            continue
-        v = normalizar(valor)
-        if v == "TOTAL" and "TOTAL" not in mapeamento:
-            mapeamento["TOTAL"] = col
-        if v == "USUARIO" and "USUARIO" not in mapeamento:
-            mapeamento["USUARIO"] = col
-    return mapeamento
-
-
-@st.cache_data(show_spinner="Lendo planilha...")
-def ler_planilha(bytes_arquivo):
-    wb = openpyxl.load_workbook(io.BytesIO(bytes_arquivo), data_only=True)
-    sheet = wb.active
-
-    mapeamento = localizar_colunas(sheet)
-    usando_fallback = ("TOTAL" not in mapeamento) or ("USUARIO" not in mapeamento)
-    col_total = mapeamento.get("TOTAL", 9)
-    col_usuario = mapeamento.get("USUARIO", 13)
-
-    dados = []
-    for row in range(2, sheet.max_row + 1):
-        if sheet.row_dimensions[row].hidden:
-            continue
-        val_total = sheet.cell(row=row, column=col_total).value
-        val_usuario = sheet.cell(row=row, column=col_usuario).value
-        if val_total is not None and val_usuario is not None:
-            dados.append({"TOTAL": val_total, "USUARIO": normalizar(val_usuario)})
-
-    df = pd.DataFrame(dados, columns=["TOTAL", "USUARIO"])
-    if not df.empty:
-        df["TOTAL"] = pd.to_numeric(df["TOTAL"], errors="coerce").fillna(0)
-
-    return df, usando_fallback
-
-
-# =============================================================================
-# 9. Geração de relatório em imagem, Excel e histórico
+# 7. Imagem do relatório, tabela HTML e Excel
 # =============================================================================
 def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_skus,
                             meta_exemplares, meta_skus, df_real, data_formatada=""):
@@ -821,7 +1037,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
             linhas_por_registro.append(len(linhas_texto))
         df_relatorio["Movimentação Operacional"] = textos_quebrados
 
-    # --- Medidas gerais (em polegadas) -------------------------------------
     ALTURA_HEADER_IN = 0.62
     ESPACO_HEADER_CARDS_IN = 0.22
     ALTURA_CARDS_IN = 1.15
@@ -849,14 +1064,12 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     fig = plt.figure(figsize=(11, altura_fig), dpi=200)
     fig.patch.set_facecolor("#F8FAFC")
 
-    # --- Faixa de cabeçalho (fundo branco) -----------------------------------
     frac_header_altura = ALTURA_HEADER_IN / altura_fig
     ax_header = fig.add_axes([0, 1 - frac_header_altura, 1, frac_header_altura])
     ax_header.set_xlim(0, 1); ax_header.set_ylim(0, 1); ax_header.axis("off")
     ax_header.add_patch(mpatches.Rectangle((0, 0), 1, 1, facecolor="#FFFFFF", edgecolor="none"))
     ax_header.plot([0, 1], [0.02, 0.02], color="#E5E7EB", linewidth=1, transform=ax_header.transAxes)
 
-    # Ícone simples (quadrado arredondado com 3 barrinhas ascendentes)
     icon_x, icon_w = 0.028, 0.032
     ax_header.add_patch(mpatches.FancyBboxPatch(
         (icon_x, 0.28), icon_w, 0.44, boxstyle="round,pad=0,rounding_size=0.012",
@@ -881,7 +1094,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         ax_header.text(0.972, 0.30, f"Gerado em {horario_brasil.strftime('%d/%m/%Y %H:%M')}",
                         fontsize=7.5, color=COR_MUTED, va="center", ha="right")
 
-    # --- Cards de KPI --------------------------------------------------------
     y_cards_topo_in = altura_fig - ALTURA_HEADER_IN - ESPACO_HEADER_CARDS_IN
     y_cards_base_in = y_cards_topo_in - ALTURA_CARDS_IN
     frac_cards_base = y_cards_base_in / altura_fig
@@ -891,7 +1103,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         ax = fig.add_axes([x, frac_cards_base, largura, frac_cards_altura])
         ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
 
-        # Sombra sutil (retângulo levemente deslocado e mais claro atrás do card)
         ax.add_patch(mpatches.FancyBboxPatch(
             (0.015, 0.03), 0.98, 0.92, boxstyle="round,pad=0,rounding_size=0.09",
             linewidth=0, facecolor="#E2E8F0", alpha=0.6, transform=ax.transAxes
@@ -911,7 +1122,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
         ax.text(0.09, 0.60, valor, fontsize=22, fontweight="bold", color=COR_TEXTO, va="top")
         ax.text(0.09, 0.35, sub, fontsize=7.8, color=COR_MUTED, va="top")
 
-        # Barra de progresso
         largura_barra = 0.82
         ax.add_patch(mpatches.FancyBboxPatch(
             (0.09, 0.16), largura_barra, 0.055, boxstyle="round,pad=0,rounding_size=0.03",
@@ -931,13 +1141,11 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
                   f"Meta Diária: {meta_skus:,}  ·  Atingido: {pct_skus:.1%}",
                   pct_skus, COR_TEAL)
 
-    # --- Tabela ---------------------------------------------------------------
     y_tabela_topo_in = y_cards_base_in - ESPACO_CARDS_TABELA_IN
     y_tabela_base_in = y_tabela_topo_in - altura_tabela_in
     frac_tabela_base = y_tabela_base_in / altura_fig
     frac_tabela_altura = altura_tabela_in / altura_fig
 
-    # Moldura arredondada por trás da tabela (efeito "card")
     ax_moldura = fig.add_axes([0.04, frac_tabela_base, 0.92, frac_tabela_altura])
     ax_moldura.set_xlim(0, 1); ax_moldura.set_ylim(0, 1); ax_moldura.axis("off")
     ax_moldura.add_patch(mpatches.FancyBboxPatch(
@@ -976,7 +1184,6 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     else:
         ax.text(0.02, 0.9, "Nenhum dado disponível.", fontsize=9, color=COR_MUTED)
 
-    # --- Rodapé ---------------------------------------------------------------
     frac_rodape_altura = ALTURA_RODAPE_IN / altura_fig
     ax_rodape = fig.add_axes([0.04, 0, 0.92, frac_rodape_altura])
     ax_rodape.set_xlim(0, 1); ax_rodape.set_ylim(0, 1); ax_rodape.axis("off")
@@ -993,13 +1200,35 @@ def gerar_relatorio_imagem(total_exemplares, total_skus, pct_exemplares, pct_sku
     return buffer.getvalue()
 
 
+def classe_cargo(cargo):
+    n = normalizar(cargo)
+    if n.startswith("LIDER"):
+        return "lider"
+    if n.startswith("APOIO"):
+        return "apoio"
+    if n.startswith("OPERADOR"):
+        return "operador"
+    return "outro"
+
+
+def iniciais(nome):
+    partes = [p for p in str(nome).split() if p]
+    if not partes:
+        return "?"
+    return (partes[0][0] + (partes[1][0] if len(partes) > 1 else "")).upper()
+
+
+def formatar_inteiro_br(valor):
+    return f"{int(valor):,}".replace(",", ".")
+
+
 def renderizar_tabela_html(df):
     if df.empty:
         return "<div class='tabela-vazia'>Nenhum dado disponível.</div>"
 
     larguras = {
         "Cargo": "13%",
-        "Colaboradora": "17%",
+        "Colaboradora": "19%",
         "Exemplares": "10%",
         "SKUs": "8%",
         "Meta Individual": "11%",
@@ -1018,22 +1247,43 @@ def renderizar_tabela_html(df):
         celulas = []
         for c in colunas:
             valor = linha[c]
-            if isinstance(valor, (int,)) or (isinstance(valor, float) and float(valor).is_integer()):
-                texto = f"{int(valor):,}".replace(",", ".") if c in ("Exemplares", "SKUs", "Meta Individual") else str(valor)
-            else:
-                texto = "" if valor is None else str(valor)
-            celulas.append(f"<td>{html.escape(texto)}</td>")
-        linhas_html.append(f"<tr>{''.join(celulas)}</tr>")
+            texto_cru = texto_seguro(valor)
 
-    return f"""
-    <div class="tabela-wrapper">
-      <table class="tabela-gerencial">
-        <colgroup>{colgroup}</colgroup>
-        <thead><tr>{cabecalho}</tr></thead>
-        <tbody>{''.join(linhas_html)}</tbody>
-      </table>
-    </div>
-    """
+            if c == "Cargo":
+                celula = f"<span class='pill pill-{classe_cargo(texto_cru)}'>{html.escape(texto_cru)}</span>"
+            elif c == "Colaboradora":
+                celula = (f"<span class='avatar'>{html.escape(iniciais(texto_cru))}</span>"
+                          f"<span class='nome-colab'>{html.escape(texto_cru)}</span>")
+            elif c == "% Meta Individual" and texto_cru.endswith("%"):
+                try:
+                    pct_num = int(texto_cru.rstrip("%"))
+                except ValueError:
+                    pct_num = None
+                if pct_num is None:
+                    celula = html.escape(texto_cru)
+                else:
+                    cls = "ok" if pct_num >= 100 else ("warn" if pct_num >= 70 else "bad")
+                    celula = f"<span class='chip chip-{cls}'>{html.escape(texto_cru)}</span>"
+            elif c == "Movimentação Operacional":
+                if texto_cru.startswith("Ausente"):
+                    celula = f"<span class='txt-ausente'>{html.escape(texto_cru)}</span>"
+                else:
+                    celula = html.escape(texto_cru)
+            elif c in ("Exemplares", "SKUs", "Meta Individual") and isinstance(valor, numbers.Real) \
+                    and not pd.isna(valor):
+                celula = formatar_inteiro_br(valor)
+            else:
+                celula = html.escape(texto_cru)
+            celulas.append(f"<td>{celula}</td>")
+        linhas_html.append("<tr>" + "".join(celulas) + "</tr>")
+
+    return (
+        "<div class='tabela-wrapper'><table class='tabela-gerencial'>"
+        f"<colgroup>{colgroup}</colgroup>"
+        f"<thead><tr>{cabecalho}</tr></thead>"
+        f"<tbody>{''.join(linhas_html)}</tbody>"
+        "</table></div>"
+    )
 
 
 def gerar_excel_gerencial(df_real):
@@ -1046,8 +1296,53 @@ def gerar_excel_gerencial(df_real):
     return buffer.getvalue()
 
 
+def status_meta(pct):
+    if pct >= 1:
+        return "Meta batida", "ok"
+    if pct >= 0.7:
+        return "No ritmo", "warn"
+    return "Abaixo da meta", "bad"
+
+
+def card_html(icone, titulo, valor, sub, pct=None, accent="#2563EB"):
+    chip = ""
+    barra = ""
+    if pct is not None:
+        texto_status, cls = status_meta(pct)
+        chip = f"<span class='chip chip-{cls}'>{texto_status}</span>"
+        largura = max(min(pct, 1.0), 0.0) * 100
+        barra = (f"<div class='bar'><div class='bar-fill' "
+                 f"style='width:{largura:.1f}%; background:{accent};'></div></div>")
+    return (
+        f"<div class='card-kpi' style='--accent-color:{accent};'>"
+        f"<div class='card-top'><div class='card-icon'>{icone}</div>{chip}</div>"
+        f"<div class='card-title'>{titulo}</div>"
+        f"<div class='card-value'>{valor}</div>"
+        f"<div class='card-sub'>{sub}</div>{barra}</div>"
+    )
+
+
 # =============================================================================
-# 10. LÓGICA PRINCIPAL
+# 8. Cabeçalho
+# =============================================================================
+agora_br = datetime.now(ZoneInfo("America/Sao_Paulo"))
+st.markdown(
+    "<div class='hero'>"
+    "<div class='hero-left'>"
+    f"<div class='hero-logo'>{LOGO_HERO_SVG}</div>"
+    "<div><div class='hero-title'>Painel Executivo de Produção</div>"
+    "<div class='hero-sub'>Varejo — acompanhamento diário de produtividade</div></div>"
+    "</div>"
+    "<div class='hero-right'>"
+    f"<div class='hero-date'>{data_produtividade.strftime('%d/%m/%Y')}</div>"
+    f"<div class='hero-sub'>Atualizado às {agora_br.strftime('%H:%M')}</div>"
+    "</div></div>",
+    unsafe_allow_html=True,
+)
+
+
+# =============================================================================
+# 9. LÓGICA PRINCIPAL
 # =============================================================================
 if uploaded_file:
     df_filtrado, usando_fallback = ler_planilha(uploaded_file.getvalue())
@@ -1071,45 +1366,28 @@ if uploaded_file:
         total_skus = int(len(df_filtrado))
 
         nomes_excel_validos = {nome_excel(n, ALIAS_EXCEL) for n in NOMES_LISTA}
-        nomes_nao_mapeados = sorted(set(df_filtrado["USUARIO"]) - nomes_excel_validos)
+        nomes_manuais_norm = {normalizar(p["nome"]) for p in st.session_state["pessoas_manuais"]}
+        nomes_nao_mapeados = sorted(
+            set(df_filtrado["USUARIO"]) - nomes_excel_validos - nomes_manuais_norm - set(cfg.get("ignorados", []))
+        )
         if nomes_nao_mapeados:
             st.warning(
-                "⚠️ Encontrados na planilha, mas **não mapeados** para ninguém da equipe "
-                "cadastrada: " + ", ".join(nomes_nao_mapeados) + ". Esses registros entram "
-                "no TOTAL geral acima, mas não aparecem na tabela individual — confira se "
-                "não é alguém novo que precisa ser cadastrado em '⚙️ Configurar Equipe'."
+                "⚠️ Encontrados na planilha, mas **não mapeados** para ninguém da equipe: "
+                + ", ".join(nomes_nao_mapeados)
+                + ". Esses registros entram no total geral, mas não aparecem na tabela individual. "
+                "Use **🆕 Novos na planilha** na barra lateral para cadastrar, vincular ou ignorar."
             )
 
-    META_EXEMPLARES, META_SKUS = 55000, 1200
     pct_exemplares = (total_exemplares / META_EXEMPLARES) if META_EXEMPLARES else 0
     pct_skus = (total_skus / META_SKUS) if META_SKUS else 0
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(
-            f'<div class="card-kpi" style="--accent-color:#2563EB;">'
-            f'<div class="card-title">📦 Total de Exemplares</div>'
-            f'<div class="card-value">{total_exemplares:,} un</div>'
-            f'<div class="card-sub">Meta Diária: {META_EXEMPLARES:,} un · Atingido: {pct_exemplares:.1%}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.progress(min(pct_exemplares, 1.0))
-    with c2:
-        st.markdown(
-            f'<div class="card-kpi" style="--accent-color:#0D9488;">'
-            f'<div class="card-title">🏷️ Total de SKU</div>'
-            f'<div class="card-value">{total_skus:,}</div>'
-            f'<div class="card-sub">Meta Diária: {META_SKUS:,} · Atingido: {pct_skus:.1%}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.progress(min(pct_skus, 1.0))
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
     data_str_atual = data_produtividade.strftime("%Y-%m-%d")
 
+    # ------------------------------------------------------------------
+    # Monta a tabela gerencial (mesma lógica de antes)
+    # ------------------------------------------------------------------
     data_gerencial = []
-    textos_automaticos_por_pessoa = {}  # nome -> texto gerado automaticamente (antes do override manual), usado para o autosave do modo edição não "engessar" texto que ninguém editou de fato
+    textos_automaticos_por_pessoa = {}
     for n in NOMES_LISTA:
         if n in remover_do_setor:
             continue
@@ -1166,11 +1444,7 @@ if uploaded_file:
             else:
                 justificativa_texto = "Atividade normal no setor."
 
-        # A ausência sempre tem prioridade sobre um texto manual salvo
-        # anteriormente. Sem isso, um texto de movimentação salvo enquanto a
-        # pessoa ainda não estava ausente (ex.: pelo autosave do modo
-        # "Editar tabela") continuava "grudado" e escondia o aviso de
-        # falta, mesmo com a pessoa corretamente marcada como ausente.
+        # A ausência tem prioridade sobre qualquer texto manual salvo antes.
         override_chave = (data_str_atual, n)
         if is_ausente:
             if override_chave in st.session_state["mov_manual_overrides"]:
@@ -1200,14 +1474,12 @@ if uploaded_file:
 
         data_gerencial.append(linha)
 
-    # --- Pessoas adicionadas manualmente pela lateral ("➕ Adicionar
-    # Manualmente ao Relatório") — entram na tabela mesmo sem estar na
-    # equipe cadastrada e mesmo sem registro na planilha no dia. Se o nome
-    # digitado bater com algo na planilha, os números reais são usados;
-    # senão, ficam zerados.
+    # Pessoas adicionadas manualmente pela lateral
     for pessoa_manual in st.session_state["pessoas_manuais"]:
         nome_manual = pessoa_manual["nome"]
         cargo_manual = pessoa_manual["cargo"]
+        if nome_manual in NOMES_LISTA:
+            continue  # já foi cadastrada na equipe depois; evita linha duplicada
 
         if not df_filtrado.empty:
             df_func_manual = df_filtrado[df_filtrado["USUARIO"] == normalizar(nome_manual)]
@@ -1241,154 +1513,240 @@ if uploaded_file:
 
     df_real = pd.DataFrame(data_gerencial)
 
-    st.markdown(
-        "<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; "
-        "font-weight: 700; margin-bottom:10px;'>📋 Detalhamento Gerencial de Produtividade</h3>",
-        unsafe_allow_html=True,
-    )
-
-    col_toggle1, col_toggle2 = st.columns(2)
-    with col_toggle1:
-        mostrar_individual = st.checkbox(
-            "👁️ Mostrar Exemplares/SKUs individuais", value=True, key="mostrar_individual"
-        )
-    with col_toggle2:
-        modo_edicao = st.checkbox(
-            "✏️ Editar tabela (como planilha)", value=False, key="modo_edicao_tabela"
+    # Ordenação: cargo (ordem da equipe) e depois exemplares (maior primeiro)
+    if not df_real.empty:
+        ordem_cargo = {c: i for i, c in enumerate(CARGOS_ORDEM)}
+        df_real["_ordem"] = df_real["Cargo"].map(ordem_cargo).fillna(len(ordem_cargo))
+        df_real = (
+            df_real.sort_values(["_ordem", "Exemplares"], ascending=[True, False], kind="stable")
+            .drop(columns="_ordem")
+            .reset_index(drop=True)
         )
 
-    colunas_ocultaveis = ["Exemplares", "SKUs"]
-    if mostrar_individual:
-        df_exibir = df_real.copy()
+    # ------------------------------------------------------------------
+    # Indicadores
+    # ------------------------------------------------------------------
+    if not df_real.empty:
+        ativos = int((df_real["SKUs"] > 0).sum())
+        linha_destaque = df_real.loc[df_real["Exemplares"].idxmax()]
+        destaque_txt = f"{linha_destaque['Colaboradora']} ({int(linha_destaque['Exemplares']):,} un)"
     else:
-        df_exibir = df_real.drop(columns=[c for c in colunas_ocultaveis if c in df_real.columns])
+        ativos = 0
+        destaque_txt = "—"
+    media_por_pessoa = int(total_exemplares / ativos) if ativos else 0
 
-    if modo_edicao:
-        st.caption(
-            "✍️ A coluna **Movimentação Operacional** é livre — escreva o que quiser. "
-            "As demais colunas ficam bloqueadas aqui para não conflitar com os dados da "
-            "planilha. O texto tenta salvar sozinho ao sair do campo, mas para garantir "
-            "que nada se perca clique em **💾 Salvar agora** antes de mexer nos horários "
-            "no sidebar ou atualizar a página."
-        )
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(card_html(
+            "📦", "Total de exemplares", f"{total_exemplares:,} un",
+            f"Meta diária {META_EXEMPLARES:,} un — atingido {pct_exemplares:.1%}",
+            pct_exemplares, "#2563EB"), unsafe_allow_html=True)
+    with k2:
+        st.markdown(card_html(
+            "🏷️", "Total de SKU", f"{total_skus:,}",
+            f"Meta diária {META_SKUS:,} — atingido {pct_skus:.1%}",
+            pct_skus, "#0D9488"), unsafe_allow_html=True)
+    with k3:
+        st.markdown(card_html(
+            "👥", "Colaboradores ativos", f"{ativos}",
+            f"{len(NOMES_LISTA)} na equipe cadastrada", None, "#7C3AED"), unsafe_allow_html=True)
+    with k4:
+        st.markdown(card_html(
+            "⚡", "Média por colaborador", f"{media_por_pessoa:,} un",
+            f"Destaque: {html.escape(destaque_txt)}", None, "#EA580C"), unsafe_allow_html=True)
 
-        colunas_bloqueadas = [c for c in df_exibir.columns if c != "Movimentação Operacional"]
-
-        df_exibir_editado = st.data_editor(
-            df_exibir,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            key="editor_tabela_gerencial",
-            disabled=colunas_bloqueadas,
-            column_config={
-                "Movimentação Operacional": st.column_config.TextColumn(
-                    "Movimentação Operacional",
-                    help="Escreva livremente o que quiser exibir para esta pessoa.",
-                ),
-            },
-        )
-
-        for col in df_exibir_editado.columns:
-            df_real[col] = df_exibir_editado[col].values
-
-        def persistir_movimentacao_editada(df_editado):
-            """Grava como override manual apenas o texto que realmente foi
-            editado à mão (diferente do texto automático daquela pessoa nesta
-            data). Se o texto exibido for igual ao automático — por exemplo,
-            porque a pessoa foi marcada como ausente e o texto na tela
-            passou a ser "Ausente..." de novo — qualquer override antigo é
-            removido em vez de recriado, evitando que um texto de
-            movimentação antigo "grude" e esconda mudanças como a ausência."""
-            total_gravado = 0
-            if "Movimentação Operacional" in df_editado.columns and "Colaboradora" in df_editado.columns:
-                for _, linha_editada in df_editado.iterrows():
-                    nome_pessoa = linha_editada.get("Colaboradora")
-                    texto_editado = texto_seguro(linha_editada.get("Movimentação Operacional"))
-                    if not nome_pessoa:
-                        continue
-                    chave = (data_str_atual, nome_pessoa)
-                    texto_automatico = textos_automaticos_por_pessoa.get(nome_pessoa)
-                    if texto_automatico is not None and texto_editado == texto_automatico:
-                        # Igual ao automático: não é uma edição manual de verdade.
-                        st.session_state["mov_manual_overrides"].pop(chave, None)
-                    else:
-                        st.session_state["mov_manual_overrides"][chave] = texto_editado
-                        total_gravado += 1
-                salvar_overrides_disco(st.session_state["mov_manual_overrides"])
-            return total_gravado
-
-        persistir_movimentacao_editada(df_exibir_editado)
-
-        col_salvar, col_restaurar_texto = st.columns([1, 2])
-        with col_salvar:
-            if st.button("💾 Salvar agora", use_container_width=True, type="primary"):
-                qtd = persistir_movimentacao_editada(df_exibir_editado)
-                st.success(f"✅ Salvo! ({qtd} linha(s) gravada(s) para {data_formatada})")
-        with col_restaurar_texto:
-            if st.button("🔄 Restaurar texto automático desta data", use_container_width=True):
-                chaves_para_remover = [
-                    k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
-                ]
-                for k in chaves_para_remover:
-                    del st.session_state["mov_manual_overrides"][k]
-                salvar_overrides_disco(st.session_state["mov_manual_overrides"])
-                st.rerun()
-    else:
-        st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
-
-    col_exp1, col_exp2 = st.columns(2)
-    with col_exp1:
-        if not df_real.empty:
-            st.download_button(
-                label="📥 Baixar Tabela em Excel",
-                data=gerar_excel_gerencial(df_real),
-                file_name=f"produtividade_{data_produtividade.strftime('%Y-%m-%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-
-    st.markdown("<br><hr>", unsafe_allow_html=True)
-
-    st.markdown("<h4 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 0.95rem; font-weight: 700; margin-top:18px;'>🖼️ Relatório em Imagem</h4>", unsafe_allow_html=True)
-    st.caption("Clique com o botão direito na imagem e escolha **Copiar imagem** para colar direto no e-mail, ou baixe o arquivo abaixo.")
+    # Imagem gerada uma vez e usada nas abas de imagem e e-mail
     imagem_relatorio = gerar_relatorio_imagem(
         total_exemplares, total_skus, pct_exemplares, pct_skus, META_EXEMPLARES, META_SKUS, df_real,
         data_formatada=data_formatada,
     )
-    st.image(imagem_relatorio, use_container_width=True)
     nome_arquivo_imagem = f"relatorio_producao_{data_produtividade.strftime('%Y-%m-%d')}.png"
-    st.download_button(
-        label="📥 Baixar Relatório em Imagem",
-        data=imagem_relatorio,
-        file_name=nome_arquivo_imagem,
-        mime="image/png",
+
+    tab_det, tab_img, tab_hist, tab_mail = st.tabs(
+        ["📋 Detalhamento", "🖼️ Relatório em imagem", "📈 Histórico", "✉️ E-mail"]
     )
 
-    # --- Texto do e-mail ---------------------------------------------------------
-    st.markdown("<br><hr>", unsafe_allow_html=True)
-    st.markdown(
-        "<h3 style='font-family: \"Sora\", sans-serif; color: #0F172A; font-size: 1.05rem; "
-        "font-weight: 700;'>✉️ Texto do E-mail Pronto para a Diretoria</h3>",
-        unsafe_allow_html=True,
-    )
+    # ==================================================================
+    # ABA 1 — Detalhamento gerencial
+    # ==================================================================
+    with tab_det:
+        st.markdown("<div class='secao-titulo'>Detalhamento gerencial de produtividade</div>", unsafe_allow_html=True)
 
-    # Versão em texto simples (usada na caixa para copiar/colar manualmente,
-    # e como alternativa em clientes de e-mail que não leem HTML).
-    texto_final = (
-        f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\n"
-        f"referente ao dia {data_formatada}.\n\nObservações do Dia:\n"
-        f"(imagem do painel anexada/embutida neste e-mail)\n\n"
-        f"--------------------------------\n"
-        f"Resumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n"
-        f"--------------------------------\n\nAtenciosamente,"
-    )
+        col_toggle1, col_toggle2 = st.columns(2)
+        with col_toggle1:
+            mostrar_individual = st.checkbox(
+                "👁️ Mostrar Exemplares/SKUs individuais", value=True, key="mostrar_individual"
+            )
+        with col_toggle2:
+            modo_edicao = st.checkbox(
+                "✏️ Editar tabela (como planilha)", value=False, key="modo_edicao_tabela"
+            )
 
-    # Versão em HTML enviada de fato — reproduz o modelo do print: texto,
-    # depois "Observações do Dia:" e a imagem do painel logo abaixo, embutida
-    # via Content-ID (cid) em vez de só anexada.
-    CID_IMAGEM_RELATORIO = "relatorio_producao_imagem"
-    corpo_html_email = f"""\
+        colunas_ocultaveis = ["Exemplares", "SKUs"]
+        if mostrar_individual:
+            df_exibir = df_real.copy()
+        else:
+            df_exibir = df_real.drop(columns=[c for c in colunas_ocultaveis if c in df_real.columns])
+
+        if modo_edicao and not df_exibir.empty:
+            st.caption(
+                "✍️ A coluna **Movimentação Operacional** é livre — escreva o que quiser. "
+                "As demais colunas ficam bloqueadas para não conflitar com os dados da "
+                "planilha. O texto tenta salvar sozinho ao sair do campo, mas para garantir "
+                "que nada se perca clique em **💾 Salvar agora** antes de mexer nos horários "
+                "na lateral ou atualizar a página."
+            )
+
+            colunas_bloqueadas = [c for c in df_exibir.columns if c != "Movimentação Operacional"]
+
+            df_exibir_editado = st.data_editor(
+                df_exibir,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="fixed",
+                key="editor_tabela_gerencial",
+                disabled=colunas_bloqueadas,
+                column_config={
+                    "Movimentação Operacional": st.column_config.TextColumn(
+                        "Movimentação Operacional",
+                        help="Escreva livremente o que quiser exibir para esta pessoa.",
+                    ),
+                },
+            )
+
+            for col in df_exibir_editado.columns:
+                df_real[col] = df_exibir_editado[col].values
+
+            def persistir_movimentacao_editada(df_editado):
+                """Grava como override apenas o texto realmente editado à mão
+                (diferente do automático). Texto igual ao automático remove o
+                override antigo em vez de recriá-lo."""
+                total_gravado = 0
+                if "Movimentação Operacional" in df_editado.columns and "Colaboradora" in df_editado.columns:
+                    for _, linha_editada in df_editado.iterrows():
+                        nome_pessoa = linha_editada.get("Colaboradora")
+                        texto_editado = texto_seguro(linha_editada.get("Movimentação Operacional"))
+                        if not nome_pessoa:
+                            continue
+                        chave = (data_str_atual, nome_pessoa)
+                        texto_automatico = textos_automaticos_por_pessoa.get(nome_pessoa)
+                        if texto_automatico is not None and texto_editado == texto_automatico:
+                            st.session_state["mov_manual_overrides"].pop(chave, None)
+                        else:
+                            st.session_state["mov_manual_overrides"][chave] = texto_editado
+                            total_gravado += 1
+                    salvar_overrides_disco(st.session_state["mov_manual_overrides"])
+                return total_gravado
+
+            persistir_movimentacao_editada(df_exibir_editado)
+
+            col_salvar, col_restaurar_texto = st.columns([1, 2])
+            with col_salvar:
+                if st.button("💾 Salvar agora", use_container_width=True, type="primary"):
+                    qtd = persistir_movimentacao_editada(df_exibir_editado)
+                    st.success(f"✅ Salvo! ({qtd} linha(s) gravada(s) para {data_formatada})")
+            with col_restaurar_texto:
+                if st.button("🔄 Restaurar texto automático desta data", use_container_width=True):
+                    chaves_para_remover = [
+                        k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
+                    ]
+                    for k in chaves_para_remover:
+                        del st.session_state["mov_manual_overrides"][k]
+                    salvar_overrides_disco(st.session_state["mov_manual_overrides"])
+                    st.rerun()
+        else:
+            st.markdown(renderizar_tabela_html(df_exibir), unsafe_allow_html=True)
+
+        if not df_real.empty:
+            st.download_button(
+                label="📥 Baixar tabela em Excel",
+                data=gerar_excel_gerencial(df_real),
+                file_name=f"produtividade_{data_produtividade.strftime('%Y-%m-%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+    # ==================================================================
+    # ABA 2 — Relatório em imagem
+    # ==================================================================
+    with tab_img:
+        st.markdown("<div class='secao-titulo'>Relatório em imagem</div>", unsafe_allow_html=True)
+        st.caption(
+            "Clique com o botão direito na imagem e escolha **Copiar imagem** para colar "
+            "direto no e-mail, ou baixe o arquivo abaixo."
+        )
+        st.image(imagem_relatorio, use_container_width=True)
+        st.download_button(
+            label="📥 Baixar relatório em imagem",
+            data=imagem_relatorio,
+            file_name=nome_arquivo_imagem,
+            mime="image/png",
+        )
+
+    # ==================================================================
+    # ABA 3 — Histórico
+    # ==================================================================
+    with tab_hist:
+        st.markdown("<div class='secao-titulo'>Evolução diária</div>", unsafe_allow_html=True)
+        col_h1, col_h2 = st.columns([1, 2])
+        with col_h1:
+            if st.button(f"💾 Salvar {data_formatada} no histórico", use_container_width=True, key="btn_salvar_hist"):
+                if salvar_historico_dia(data_str_atual, total_exemplares, total_skus, ativos):
+                    st.success(f"Dia {data_formatada} salvo no histórico.")
+                else:
+                    st.error("Não consegui gravar o arquivo de histórico.")
+        with col_h2:
+            st.caption("Salvar o mesmo dia de novo substitui o registro anterior daquela data.")
+
+        df_hist = carregar_historico()
+        if df_hist.empty:
+            st.info("Ainda não há dias no histórico. Salve o primeiro com o botão acima.")
+        else:
+            df_hist["Data"] = pd.to_datetime(df_hist["Data"], errors="coerce")
+            df_hist = df_hist.dropna(subset=["Data"]).sort_values("Data")
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Dias registrados", len(df_hist))
+            m2.metric("Média de exemplares", f"{int(df_hist['Exemplares'].mean()):,}")
+            melhor = df_hist.loc[df_hist["Exemplares"].idxmax()]
+            m3.metric("Melhor dia", melhor["Data"].strftime("%d/%m"), f"{int(melhor['Exemplares']):,} un")
+
+            graf_ex = df_hist.set_index("Data")[["Exemplares"]].copy()
+            graf_ex["Meta"] = META_EXEMPLARES
+            st.markdown("**Exemplares por dia**")
+            st.line_chart(graf_ex, color=["#2563EB", "#CBD5E1"])
+
+            graf_sku = df_hist.set_index("Data")[["SKUs"]].copy()
+            graf_sku["Meta"] = META_SKUS
+            st.markdown("**SKUs por dia**")
+            st.line_chart(graf_sku, color=["#0D9488", "#CBD5E1"])
+
+            df_hist_exibir = df_hist.copy()
+            df_hist_exibir["Data"] = df_hist_exibir["Data"].dt.strftime("%d/%m/%Y")
+            st.dataframe(df_hist_exibir.iloc[::-1], use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Baixar histórico (CSV)",
+                data=df_hist_exibir.to_csv(index=False).encode("utf-8-sig"),
+                file_name="historico_diario.csv",
+                mime="text/csv",
+            )
+
+    # ==================================================================
+    # ABA 4 — E-mail
+    # ==================================================================
+    with tab_mail:
+        st.markdown("<div class='secao-titulo'>Texto do e-mail para a diretoria</div>", unsafe_allow_html=True)
+
+        texto_final = (
+            f"Boa tarde, Prezados.\n\nSegue abaixo o relatório de produção.\n"
+            f"referente ao dia {data_formatada}.\n\nObservações do Dia:\n"
+            f"(imagem do painel anexada/embutida neste e-mail)\n\n"
+            f"--------------------------------\n"
+            f"Resumo Varejo.\nSKU: {total_skus}\nExemplares: {total_exemplares:,}\n"
+            f"--------------------------------\n\nAtenciosamente,"
+        )
+
+        CID_IMAGEM_RELATORIO = "relatorio_producao_imagem"
+        corpo_html_email = f"""\
 <html>
   <body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color:#111827;">
     <p>Boa tarde, Prezados.</p>
@@ -1406,17 +1764,24 @@ if uploaded_file:
 </html>
 """
 
-    st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final, height=200, key="texto_email")
+        st.text_area("Selecione tudo abaixo e copie (Ctrl+A / Ctrl+C):", value=texto_final, height=220, key="texto_email")
 
-    if st.button("📧 Enviar relatório por e-mail agora"):
-        enviar_email_relatorio(
-            assunto=f"Relatório de Produção - {data_formatada}",
-            corpo_texto=texto_final,
-            corpo_html=corpo_html_email,
-            imagem_bytes=imagem_relatorio,
-            nome_imagem=nome_arquivo_imagem,
-            cid_imagem=CID_IMAGEM_RELATORIO,
-        )
+        if st.button("📧 Enviar relatório por e-mail agora"):
+            enviar_email_relatorio(
+                assunto=f"Relatório de Produção - {data_formatada}",
+                corpo_texto=texto_final,
+                corpo_html=corpo_html_email,
+                imagem_bytes=imagem_relatorio,
+                nome_imagem=nome_arquivo_imagem,
+                cid_imagem=CID_IMAGEM_RELATORIO,
+            )
 
 else:
-    st.info("👋 Painel atualizado com novas melhorias. Faça o upload da sua planilha Excel na barra lateral.")
+    st.markdown(
+        "<div class='vazio'>"
+        "<h3>Envie a planilha para começar</h3>"
+        "<p>Use o campo <b>Planilha de produção</b> na barra lateral. "
+        "Os totais, a tabela e o relatório aparecem assim que o arquivo for lido.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
