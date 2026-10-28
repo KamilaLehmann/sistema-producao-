@@ -1,7 +1,7 @@
 """
 Painel Executivo de Produção — Varejo
 ======================================
-Requisitos: streamlit>=1.32, pandas, openpyxl, matplotlib
+Requisitos: streamlit>=1.50, pandas, openpyxl, matplotlib
 
 Tudo que já existia continua funcionando (leitura por cabeçalho, ausências,
 movimentação, texto livre, horários salvos, imagem, Excel, e-mail em HTML,
@@ -30,6 +30,11 @@ adicionar manualmente). Novidades desta versão:
      em seções recolhíveis.
  26. Indicadores simplificados: apenas Total de exemplares e Total de SKU,
      sem selos de status e sem os cards de colaboradores/média.
+ 27. Novas colaboradoras: Ingrid Pereira (login ingridp) e Kerolay Vitoria
+     (login kerolayv), cargo Operador(a). Quem já tem equipe salva em disco
+     recebe as duas automaticamente uma única vez.
+ 28. Compatibilidade com Streamlit novo: use_container_width foi trocado
+     por width="stretch".
 
 Observação: em Streamlit Cloud o disco é temporário. Para persistência
 definitiva em nuvem, guarde esses JSON/CSV em banco ou Google Sheets.
@@ -317,9 +322,17 @@ DEFAULT_EQUIPE = {
         {"nome": "Weliton"},
         {"nome": "Ellen Kelly"},
         {"nome": "Eloizem", "alias_excel": "Eloize Meire"},
+        {"nome": "Ingrid Pereira", "alias_excel": "ingridp"},
+        {"nome": "Kerolay Vitoria", "alias_excel": "kerolayv"},
     ],
 }
 CARGOS_BASE = ["Líder", "Apoio", "Operador(a)"]
+
+# Pessoas adicionadas depois, que precisam entrar também em equipes já salvas em disco
+NOVAS_COLABORADORAS = [
+    ("Operador(a)", {"nome": "Ingrid Pereira", "alias_excel": "ingridp"}),
+    ("Operador(a)", {"nome": "Kerolay Vitoria", "alias_excel": "kerolayv"}),
+]
 
 
 def carregar_equipe_disco():
@@ -354,6 +367,20 @@ if "configuracoes" not in st.session_state:
     if isinstance(cfg_disco, dict):
         cfg_inicial.update(cfg_disco)
     st.session_state["configuracoes"] = cfg_inicial
+
+# Migração única: garante Ingrid e Kerolay em equipes já salvas em disco.
+# Roda só uma vez (flag em configuracoes), para não recriar quem for removido depois.
+if not st.session_state["configuracoes"].get("migracao_ingrid_kerolay"):
+    _eq = st.session_state["equipe_config"]
+    _aliases = {normalizar(p.get("alias_excel") or p.get("nome", "")) for ps in _eq.values() for p in ps}
+    _nomes = {normalizar(p.get("nome", "")) for ps in _eq.values() for p in ps}
+    for _cargo, _pessoa in NOVAS_COLABORADORAS:
+        if normalizar(_pessoa["alias_excel"]) in _aliases or normalizar(_pessoa["nome"]) in _nomes:
+            continue
+        _eq.setdefault(_cargo, []).append(dict(_pessoa))
+    salvar_equipe_disco(_eq)
+    st.session_state["configuracoes"]["migracao_ingrid_kerolay"] = True
+    salvar_configuracoes()
 
 
 def construir_estruturas_equipe(config):
@@ -675,7 +702,7 @@ with st.sidebar.expander("👥 Equipe (editar como planilha)"):
         config_para_df(st.session_state["equipe_config"]),
         num_rows="dynamic",
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         key="editor_equipe",
         column_config={
             "Cargo": st.column_config.SelectboxColumn("Cargo", options=cargos_disponiveis, required=True),
@@ -689,7 +716,7 @@ with st.sidebar.expander("👥 Equipe (editar como planilha)"):
     )
     col_aplicar, col_restaurar = st.columns(2)
     with col_aplicar:
-        if st.button("✅ Aplicar", use_container_width=True, key="btn_aplicar_equipe"):
+        if st.button("✅ Aplicar", width="stretch", key="btn_aplicar_equipe"):
             nova_config = df_para_config(editor_equipe)
             nomes_novos = [p["nome"] for pessoas in nova_config.values() for p in pessoas]
             duplicados = sorted({n for n in nomes_novos if nomes_novos.count(n) > 1})
@@ -703,7 +730,7 @@ with st.sidebar.expander("👥 Equipe (editar como planilha)"):
                 st.session_state.pop("editor_equipe", None)
                 st.rerun()
     with col_restaurar:
-        if st.button("↩️ Padrão", use_container_width=True, key="btn_restaurar_equipe"):
+        if st.button("↩️ Padrão", width="stretch", key="btn_restaurar_equipe"):
             st.session_state["equipe_config"] = json.loads(json.dumps(DEFAULT_EQUIPE))
             salvar_equipe_disco(st.session_state["equipe_config"])
             st.session_state.pop("editor_equipe", None)
@@ -737,7 +764,7 @@ if uploaded_file:
                 )
                 col_cad, col_ign = st.columns(2)
                 with col_cad:
-                    if st.button("✅ Cadastrar", use_container_width=True, key="btn_cadastrar_novos"):
+                    if st.button("✅ Cadastrar", width="stretch", key="btn_cadastrar_novos"):
                         if not escolhidos:
                             st.warning("Marque ao menos um nome.")
                         else:
@@ -751,7 +778,7 @@ if uploaded_file:
                             st.session_state.pop("editor_equipe", None)
                             st.rerun()
                 with col_ign:
-                    if st.button("🙈 Ignorar", use_container_width=True, key="btn_ignorar_novos",
+                    if st.button("🙈 Ignorar", width="stretch", key="btn_ignorar_novos",
                                  help="Não são da equipe: o aviso deixa de aparecer para estes nomes."):
                         if not escolhidos:
                             st.warning("Marque ao menos um nome.")
@@ -765,7 +792,7 @@ if uploaded_file:
                 st.caption("É a mesma pessoa com outro nome na planilha?")
                 u_alias = st.selectbox("Nome na planilha:", ["—"] + novos, key="u_alias")
                 p_alias = st.selectbox("Corresponde a:", ["—"] + NOMES_LISTA, key="p_alias")
-                if st.button("🔗 Vincular", use_container_width=True, key="btn_vincular"):
+                if st.button("🔗 Vincular", width="stretch", key="btn_vincular"):
                     if u_alias == "—" or p_alias == "—":
                         st.warning("Escolha o nome da planilha e a pessoa.")
                     else:
@@ -780,7 +807,7 @@ if uploaded_file:
 if cfg.get("ignorados"):
     with st.sidebar.expander(f"🙈 Nomes ignorados ({len(cfg['ignorados'])})"):
         st.caption(", ".join(n.title() for n in cfg["ignorados"]))
-        if st.button("Voltar a avisar sobre todos", use_container_width=True, key="btn_limpar_ignorados"):
+        if st.button("Voltar a avisar sobre todos", width="stretch", key="btn_limpar_ignorados"):
             cfg["ignorados"] = []
             salvar_configuracoes()
             st.rerun()
@@ -800,7 +827,7 @@ with st.sidebar.expander("➕ Adicionar manualmente ao relatório"):
     with st.form("form_adicionar_manual", clear_on_submit=True):
         novo_nome_manual = st.text_input("Nome da pessoa:")
         novo_cargo_manual = st.selectbox("Cargo:", list(EQUIPE.keys()) + ["Outro"])
-        enviado_manual = st.form_submit_button("➕ Adicionar à tabela", use_container_width=True)
+        enviado_manual = st.form_submit_button("➕ Adicionar à tabela", width="stretch")
 
     if enviado_manual:
         nome_limpo = novo_nome_manual.strip()
@@ -818,7 +845,7 @@ with st.sidebar.expander("➕ Adicionar manualmente ao relatório"):
         for i, pessoa in enumerate(st.session_state["pessoas_manuais"]):
             col_nome_add, col_remover_add = st.columns([3, 1])
             col_nome_add.markdown(f"👤 {pessoa['nome']} ({pessoa['cargo']})")
-            if col_remover_add.button("🗑️", key=f"remover_manual_{i}", use_container_width=True):
+            if col_remover_add.button("🗑️", key=f"remover_manual_{i}", width="stretch"):
                 st.session_state["pessoas_manuais"].pop(i)
                 salvar_pessoas_manuais()
                 st.rerun()
@@ -904,7 +931,7 @@ for cargo, integrantes in EQUIPE.items():
                 linha_inicial,
                 num_rows="dynamic",
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 key=f"mov_editor_{op}",
                 column_config={
                     "Saída": st.column_config.TimeColumn("Saída", format="HH:mm", step=60),
@@ -927,7 +954,7 @@ for cargo, integrantes in EQUIPE.items():
 
             col_salvar_hora, col_resetar_hora = st.sidebar.columns(2)
             with col_salvar_hora:
-                if st.button("💾 Salvar", key=f"salvar_horario_{op}", use_container_width=True):
+                if st.button("💾 Salvar", key=f"salvar_horario_{op}", width="stretch"):
                     linhas_para_salvar = []
                     for _, linha_ed in editado.iterrows():
                         sai_iso = hora_para_iso(linha_ed.get("Saída"))
@@ -939,7 +966,7 @@ for cargo, integrantes in EQUIPE.items():
                     salvar_horarios_disco(st.session_state["horarios_salvos"])
                     st.sidebar.success(f"Horário de {op} salvo.")
             with col_resetar_hora:
-                if st.button("🔄 Resetar", key=f"resetar_horario_{op}", use_container_width=True):
+                if st.button("🔄 Resetar", key=f"resetar_horario_{op}", width="stretch"):
                     st.session_state["horarios_salvos"].pop(op, None)
                     salvar_horarios_disco(st.session_state["horarios_salvos"])
                     st.session_state.pop(f"mov_editor_{op}", None)
@@ -1517,10 +1544,8 @@ if uploaded_file:
     # ------------------------------------------------------------------
     # Indicadores
     # ------------------------------------------------------------------
-    if not df_real.empty:
-        ativos = int((df_real["SKUs"] > 0).sum())
-    else:
-        ativos = 0
+    # 'ativos' alimenta o histórico (coluna Colaboradores)
+    ativos = int((df_real["SKUs"] > 0).sum()) if not df_real.empty else 0
 
     k1, k2 = st.columns(2)
     with k1:
@@ -1580,7 +1605,7 @@ if uploaded_file:
 
             df_exibir_editado = st.data_editor(
                 df_exibir,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 num_rows="fixed",
                 key="editor_tabela_gerencial",
@@ -1621,11 +1646,11 @@ if uploaded_file:
 
             col_salvar, col_restaurar_texto = st.columns([1, 2])
             with col_salvar:
-                if st.button("💾 Salvar agora", use_container_width=True, type="primary"):
+                if st.button("💾 Salvar agora", width="stretch", type="primary"):
                     qtd = persistir_movimentacao_editada(df_exibir_editado)
                     st.success(f"✅ Salvo! ({qtd} linha(s) gravada(s) para {data_formatada})")
             with col_restaurar_texto:
-                if st.button("🔄 Restaurar texto automático desta data", use_container_width=True):
+                if st.button("🔄 Restaurar texto automático desta data", width="stretch"):
                     chaves_para_remover = [
                         k for k in st.session_state["mov_manual_overrides"] if k[0] == data_str_atual
                     ]
@@ -1653,7 +1678,7 @@ if uploaded_file:
             "Clique com o botão direito na imagem e escolha **Copiar imagem** para colar "
             "direto no e-mail, ou baixe o arquivo abaixo."
         )
-        st.image(imagem_relatorio, use_container_width=True)
+        st.image(imagem_relatorio, width="stretch")
         st.download_button(
             label="📥 Baixar relatório em imagem",
             data=imagem_relatorio,
@@ -1668,7 +1693,7 @@ if uploaded_file:
         st.markdown("<div class='secao-titulo'>Evolução diária</div>", unsafe_allow_html=True)
         col_h1, col_h2 = st.columns([1, 2])
         with col_h1:
-            if st.button(f"💾 Salvar {data_formatada} no histórico", use_container_width=True, key="btn_salvar_hist"):
+            if st.button(f"💾 Salvar {data_formatada} no histórico", width="stretch", key="btn_salvar_hist"):
                 if salvar_historico_dia(data_str_atual, total_exemplares, total_skus, ativos):
                     st.success(f"Dia {data_formatada} salvo no histórico.")
                 else:
@@ -1701,7 +1726,7 @@ if uploaded_file:
 
             df_hist_exibir = df_hist.copy()
             df_hist_exibir["Data"] = df_hist_exibir["Data"].dt.strftime("%d/%m/%Y")
-            st.dataframe(df_hist_exibir.iloc[::-1], use_container_width=True, hide_index=True)
+            st.dataframe(df_hist_exibir.iloc[::-1], width="stretch", hide_index=True)
             st.download_button(
                 "📥 Baixar histórico (CSV)",
                 data=df_hist_exibir.to_csv(index=False).encode("utf-8-sig"),
