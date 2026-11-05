@@ -40,6 +40,10 @@ adicionar manualmente). Novidades desta versão:
      Os logins errados (ingridp / kerolayv) são removidos automaticamente,
      uma única vez, de equipes já salvas em disco.
 
+ 30. CADASTRO AUTOMÁTICO: quem aparece na planilha e não está na equipe é
+     cadastrado sozinho (cargo padrão configurável), usando o nome da planilha
+     como alias, então o vínculo nunca falha. Pode ser desligado na lateral.
+
 Observação: em Streamlit Cloud o disco é temporário. Para persistência
 definitiva em nuvem, guarde esses JSON/CSV em banco ou Google Sheets.
 """
@@ -357,7 +361,8 @@ def salvar_configuracoes():
     gravar_json(CONFIGURACOES_PATH, st.session_state["configuracoes"])
 
 
-CONFIG_PADRAO = {"meta_exemplares": 55000, "meta_skus": 1200, "destinatarios": "", "ignorados": []}
+CONFIG_PADRAO = {"meta_exemplares": 55000, "meta_skus": 1200, "destinatarios": "", "ignorados": [],
+                 "auto_cadastro": True, "cargo_auto": "Operador(a)"}
 
 if "equipe_config" not in st.session_state:
     st.session_state["equipe_config"] = carregar_equipe_disco() or json.loads(json.dumps(DEFAULT_EQUIPE))
@@ -705,6 +710,28 @@ with st.sidebar.expander("🎯 Metas do setor"):
 META_EXEMPLARES = int(cfg["meta_exemplares"])
 META_SKUS = int(cfg["meta_skus"])
 
+# ---- Cadastro automático ----------------------------------------------------
+with st.sidebar.expander("🤖 Cadastro automático de novos nomes"):
+    auto_ligado = st.checkbox(
+        "Cadastrar na equipe quem aparecer na planilha",
+        value=bool(cfg.get("auto_cadastro", True)),
+        key="chk_auto_cadastro",
+        help="Quando um nome novo aparece na coluna USUARIO, ele entra na equipe sozinho, "
+             "com o nome exatamente como está na planilha (assim nunca deixa de casar).",
+    )
+    _cargos_auto = list(dict.fromkeys(CARGOS_BASE + list(st.session_state["equipe_config"].keys())))
+    _cargo_atual = cfg.get("cargo_auto", "Operador(a)")
+    cargo_auto = st.selectbox(
+        "Cargo dos novos:", _cargos_auto,
+        index=_cargos_auto.index(_cargo_atual) if _cargo_atual in _cargos_auto else 0,
+        key="sel_cargo_auto",
+    )
+    if auto_ligado != cfg.get("auto_cadastro", True) or cargo_auto != cfg.get("cargo_auto"):
+        cfg["auto_cadastro"] = auto_ligado
+        cfg["cargo_auto"] = cargo_auto
+        salvar_configuracoes()
+    st.caption("Depois, se quiser, corrija o nome de exibição em 👥 Equipe. O vínculo com a planilha continua.")
+
 # ---- Equipe (editor em tabela) --------------------------------------------
 with st.sidebar.expander("👥 Equipe (editar como planilha)"):
     st.caption(
@@ -756,6 +783,35 @@ EQUIPE, NOMES_LISTA, ALIAS_EXCEL, METAS_INDIVIDUAIS, DEFAULTS_MOV, CARGO_POR_NOM
     st.session_state["equipe_config"]
 )
 CARGOS_ORDEM = list(EQUIPE.keys())
+
+# ---- Cadastro automático de novos colaboradores ----------------------------
+if uploaded_file and cfg.get("auto_cadastro", True):
+    _df_auto, _ = ler_planilha(uploaded_file.getvalue())
+    if not _df_auto.empty:
+        _validos = {nome_excel(n, ALIAS_EXCEL) for n in NOMES_LISTA}
+        _validos |= {normalizar(p["nome"]) for p in st.session_state["pessoas_manuais"]}
+        _ignorados = set(cfg.get("ignorados", []))
+        _novos_auto = sorted(set(_df_auto["USUARIO"]) - _validos - _ignorados)
+        if _novos_auto:
+            _cargo_dest = cfg.get("cargo_auto", "Operador(a)")
+            _nomes_existentes = {normalizar(n) for n in NOMES_LISTA}
+            _cadastrados = []
+            for _u in _novos_auto:
+                _nome = _u.title()
+                if normalizar(_nome) in _nomes_existentes:
+                    _nome = f"{_nome} (planilha)"
+                st.session_state["equipe_config"].setdefault(_cargo_dest, []).append(
+                    {"nome": _nome, "alias_excel": _u}
+                )
+                _nomes_existentes.add(normalizar(_nome))
+                _cadastrados.append(_nome)
+            salvar_equipe_disco(st.session_state["equipe_config"])
+            st.session_state.pop("editor_equipe", None)
+            st.session_state["msg_auto_cadastro"] = _cadastrados
+            st.rerun()
+
+if st.session_state.get("msg_auto_cadastro"):
+    st.toast("🆕 Cadastrados automaticamente: " + ", ".join(st.session_state.pop("msg_auto_cadastro")))
 
 # ---- Novos colaboradores detectados na planilha ---------------------------
 if uploaded_file:
