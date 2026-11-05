@@ -30,11 +30,15 @@ adicionar manualmente). Novidades desta versão:
      em seções recolhíveis.
  26. Indicadores simplificados: apenas Total de exemplares e Total de SKU,
      sem selos de status e sem os cards de colaboradores/média.
- 27. Novas colaboradoras: Ingrid Pereira (login ingridp) e Kerolay Vitoria
-     (login kerolayv), cargo Operador(a). Quem já tem equipe salva em disco
-     recebe as duas automaticamente uma única vez.
+ 27. Novas colaboradoras: Ingrid Pereira e Kerolay Vitoria, cargo Operador(a).
+     Quem já tem equipe salva em disco recebe as duas automaticamente uma
+     única vez.
  28. Compatibilidade com Streamlit novo: use_container_width foi trocado
      por width="stretch".
+ 29. CORREÇÃO DE ALIAS: Ingrid e Kerolay aparecem na planilha com o nome
+     completo (INGRID PEREIRA / KEROLAY VITORIA), então não precisam de alias.
+     Os logins errados (ingridp / kerolayv) são removidos automaticamente,
+     uma única vez, de equipes já salvas em disco.
 
 Observação: em Streamlit Cloud o disco é temporário. Para persistência
 definitiva em nuvem, guarde esses JSON/CSV em banco ou Google Sheets.
@@ -322,16 +326,17 @@ DEFAULT_EQUIPE = {
         {"nome": "Weliton"},
         {"nome": "Ellen Kelly"},
         {"nome": "Eloizem", "alias_excel": "Eloize Meire"},
-        {"nome": "Ingrid Pereira", "alias_excel": "ingridp"},
-        {"nome": "Kerolay Vitoria", "alias_excel": "kerolayv"},
+        {"nome": "Ingrid Pereira"},
+        {"nome": "Kerolay Vitoria"},
     ],
 }
 CARGOS_BASE = ["Líder", "Apoio", "Operador(a)"]
 
-# Pessoas adicionadas depois, que precisam entrar também em equipes já salvas em disco
+# Pessoas adicionadas depois, que precisam entrar também em equipes já salvas em disco.
+# Na planilha elas aparecem com o nome completo, então não precisam de alias.
 NOVAS_COLABORADORAS = [
-    ("Operador(a)", {"nome": "Ingrid Pereira", "alias_excel": "ingridp"}),
-    ("Operador(a)", {"nome": "Kerolay Vitoria", "alias_excel": "kerolayv"}),
+    ("Operador(a)", {"nome": "Ingrid Pereira"}),
+    ("Operador(a)", {"nome": "Kerolay Vitoria"}),
 ]
 
 
@@ -372,14 +377,25 @@ if "configuracoes" not in st.session_state:
 # Roda só uma vez (flag em configuracoes), para não recriar quem for removido depois.
 if not st.session_state["configuracoes"].get("migracao_ingrid_kerolay"):
     _eq = st.session_state["equipe_config"]
-    _aliases = {normalizar(p.get("alias_excel") or p.get("nome", "")) for ps in _eq.values() for p in ps}
     _nomes = {normalizar(p.get("nome", "")) for ps in _eq.values() for p in ps}
     for _cargo, _pessoa in NOVAS_COLABORADORAS:
-        if normalizar(_pessoa["alias_excel"]) in _aliases or normalizar(_pessoa["nome"]) in _nomes:
+        if normalizar(_pessoa["nome"]) in _nomes:
             continue
         _eq.setdefault(_cargo, []).append(dict(_pessoa))
     salvar_equipe_disco(_eq)
     st.session_state["configuracoes"]["migracao_ingrid_kerolay"] = True
+    salvar_configuracoes()
+
+# Correção única: remove os aliases errados (logins) que ficaram salvos em disco.
+if not st.session_state["configuracoes"].get("correcao_alias_ingrid_kerolay"):
+    _eq = st.session_state["equipe_config"]
+    for _pessoas in _eq.values():
+        for _p in _pessoas:
+            if (normalizar(_p.get("nome", "")) in ("INGRID PEREIRA", "KEROLAY VITORIA")
+                    and normalizar(_p.get("alias_excel", "")) in ("INGRIDP", "KEROLAYV")):
+                _p.pop("alias_excel", None)
+    salvar_equipe_disco(_eq)
+    st.session_state["configuracoes"]["correcao_alias_ingrid_kerolay"] = True
     salvar_configuracoes()
 
 
